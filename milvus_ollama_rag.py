@@ -53,7 +53,7 @@ Output:
 Number of nodes: 196
 """
 
-query = "What is the benefit of multi-head attention instead of single-head attention?"
+query = input("Ask a question about the research paper 'Attention is All You Need': ")
 
 result = query_engine.query(query)
 print(result)
