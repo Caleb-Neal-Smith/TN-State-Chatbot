@@ -27,9 +27,9 @@ pdf_document = SimpleDirectoryReader(
 print("Number of Input documents:", len(pdf_document))
 
 # OR execute this command if you have multiple PDFs inside the directory
-pdf_document = SimpleDirectoryReader(
-        dir_name, recursive=True
-).load_data()
+# pdf_document = SimpleDirectoryReader(
+#         dir_name, recursive=True
+# ).load_data()
 
 """
 Output:
