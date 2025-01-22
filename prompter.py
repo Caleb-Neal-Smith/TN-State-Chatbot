@@ -48,7 +48,7 @@ def main():
     conversation_history = []
 
     # You can set a desired maximum number of messages to keep
-    MAX_MESSAGES = 30
+    MAX_MESSAGES = 5
 
     while True:
         user_input = input("Please enter a prompt: ")
