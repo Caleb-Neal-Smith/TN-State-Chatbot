@@ -20,17 +20,27 @@ def main():
     logs_folder = "logs"
     os.makedirs(logs_folder, exist_ok=True)
 
+    # Ask user if they would like to save their conversation history
+    while True:
+        save_input = input("Do you want to save your conversation history? (yes/no): ").strip().lower()
+        if save_input in {"yes", "no"}:
+            save_history = save_input == "yes"
+            break
+        else:
+            print("Invalid input. Please type 'yes' or 'no'. ")
+
     # Create a timestamp to identify this conversation session
     session_start = datetime.now()
 
-    # Build the log file path inside the 'logs' folder
+    # Build the log file path inside the 'logs' folder.
     log_filename = os.path.join(
         logs_folder, f"conversation_{session_start.strftime('%Y%m%d_%H%M%S')}.log"
     )
 
     # Write the initial line in the log file to indicate the session start
-    with open(log_filename, "a", encoding="utf-8") as log_file:
-        log_file.write(f"Conversation start time: {session_start}\n\n")
+    if save_history:
+        with open(log_filename, "a", encoding="utf-8") as log_file:
+            log_file.write(f"Conversation start time: {session_start}\n\n")
 
     # Keep the rules in a separate string so it never gets pruned:
     rules_text = (
@@ -54,8 +64,9 @@ def main():
         user_input = input("Please enter a prompt: ")
 
         # Log the user input
-        with open(log_filename, "a", encoding="utf-8") as log_file:
-            log_file.write(f"[User] {user_input}\n")
+        if save_history:
+            with open(log_filename, "a", encoding="utf-8") as log_file:
+                log_file.write(f"[User] {user_input}\n")
 
         # Add user prompt to conversation history
         conversation_history.append(f"user: {user_input}")
@@ -65,13 +76,14 @@ def main():
 
         # Print and log AI response
         print(ai_response)
-        with open(log_filename, "a", encoding="utf-8") as log_file:
-            log_file.write(f"[AI]   {ai_response}\n")
+        if save_history:
+            with open(log_filename, "a", encoding="utf-8") as log_file:
+                log_file.write(f"[AI]   {ai_response}\n")
 
         # Add AI response to the conversation history
         conversation_history.append(f"Ollama: {ai_response}")
 
-        # Prune older conversation messages if the list exceeds the threshold
+        # Prune older conversation messages if the list exceeds the threshold.
         # This removes older user/AI turns but keeps the rules_text separate
         if len(conversation_history) > MAX_MESSAGES:
             conversation_history = conversation_history[-MAX_MESSAGES:]
