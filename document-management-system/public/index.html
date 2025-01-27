@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Configuration</title>
+    
+    <!-- Import React and ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Import Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        window.tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'tn-navy': '#002D72',
+                        'tn-gold': '#FDB827',
+                        'tn-light-blue': '#E6EEF4',
+                        'tn-dark-blue': '#002347'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100">
+    <!-- Top Bar -->
+    <div class="bg-tn-gold h-2 fixed top-0 left-0 right-0 z-50"></div>
+
+    <!-- Main Layout -->
+    <div class="min-h-screen">
+        <!-- Main Content Area -->
+        <div id="main-content" class="min-h-screen transition-all duration-300">
+            <!-- Navigation Bar -->
+            <nav class="bg-tn-navy shadow-lg relative z-40">
+                <div class="w-full px-4">
+                    <div class="flex items-center h-16">
+                        <!-- Menu Button Container -->
+                        <div id="menu-button-container" class="z-50"></div>
+                        <span class="text-xl font-semibold text-white ml-4">Document Management System</span>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Page Content -->
+            <main class="max-w-6xl mx-auto px-4 py-8">
+                <div class="bg-white rounded-lg shadow-lg p-8">
+                    <div class="border-l-4 border-tn-navy pl-4 mb-8">
+                        <h2 class="text-2xl font-semibold text-tn-navy">Upload Documents</h2>
+                        <p class="text-gray-600 mt-2">
+                            Use this secure interface to upload and manage documents.
+                        </p>
+                    </div>
+
+                    <!-- File Upload Component Container -->
+                    <div id="upload-component"></div>
+                    
+                    <!-- File List Component Container -->
+                    <div id="file-list-component"></div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Sidebar -->
+        <div id="sidebar-component" class="z-30"></div>
+    </div>
+
+    <!-- Load Components -->
+    <script src="/components/FileUpload.jsx"></script>
+    <script src="/components/FileList.jsx"></script>
+    <script src="/components/Sidebar.jsx"></script>
+    <script src="/components/MenuButton.jsx"></script>
+    
+    <!-- Initialize Components -->
+    <script>
+        // Initialize all React components after DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize File Upload
+            const uploadContainer = document.getElementById('upload-component');
+            const uploadRoot = ReactDOM.createRoot(uploadContainer);
+            uploadRoot.render(React.createElement(FileUpload));
+
+            // Initialize File List
+            const listContainer = document.getElementById('file-list-component');
+            const listRoot = ReactDOM.createRoot(listContainer);
+            listRoot.render(React.createElement(FileList));
+
+            // Initialize Menu Button
+            const menuButtonContainer = document.getElementById('menu-button-container');
+            const menuButtonRoot = ReactDOM.createRoot(menuButtonContainer);
+            menuButtonRoot.render(React.createElement(MenuButton));
+
+            // Initialize Sidebar
+            const sidebarContainer = document.getElementById('sidebar-component');
+            const sidebarRoot = ReactDOM.createRoot(sidebarContainer);
+            sidebarRoot.render(React.createElement(Sidebar));
+        });
+    </script>
+</body>
+</html>
