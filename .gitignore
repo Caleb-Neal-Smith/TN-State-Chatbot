@@ -3,3 +3,10 @@ document-management-system/node_modules
 
 # User Uploaded Files
 document-management-system/uploads
+
+# Environments
+.venv
+venv/
+
+# idea directory
+.idea/
