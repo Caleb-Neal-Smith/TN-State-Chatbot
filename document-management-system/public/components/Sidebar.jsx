@@ -1,7 +1,7 @@
 const Sidebar = () => {
     const menuItems = [
-        // Add new elements to the Sidebar using the template below:
-        { id: 'files', label: 'Document Management', icon: '📁', path: '/files', active: true }, // Are emojis allowed?
+        { id: 'dashboard', label: 'Dashboard', icon: '🏠', path: '/', active: false },
+        { id: 'files', label: 'Document Management', icon: '📁', path: '/document-management.html', active: window.location.pathname.includes('document-management') }
     ];
 
     return React.createElement('aside', {
