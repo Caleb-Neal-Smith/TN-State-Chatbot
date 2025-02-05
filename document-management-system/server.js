@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -26,7 +27,7 @@ app.use(express.static('public'));
 // Configure multer for file upload handling
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        const uploadDir = 'uploads';
+        const uploadDir = process.env.UPLOAD_DIR || 'uploads';
         // Create the uploads directory if it doesn't exist
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir);
@@ -55,8 +56,8 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 10 * 1024 * 1024, // Limit each file size to 10MB
-        files: 10 // Limit to 10 files per upload
+        fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // Limit each file size to 10MB
+        files: parseInt(process.env.MAX_FILES) || 10 // Limit to 10 files per upload
     },
     fileFilter: function (req, file, cb) {
         // Define allowed file types
@@ -194,8 +195,8 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const ollamaRequest = {
-        hostname: 'localhost',
-        port: 11434,
+        hostname: process.env.OLLAMA_ADDRESS || 'localhost',
+        port: parseInt(process.env.OLLAMA_PORT) || 11434,
         path: '/api/generate',
         method: 'POST',
         headers: {
