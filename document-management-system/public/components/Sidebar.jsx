@@ -1,6 +1,7 @@
 const Sidebar = () => {
     const menuItems = [
         { id: 'dashboard', label: 'Dashboard', icon: '🏠', path: '/', active: window.location.pathname === '/' },
+        { id: 'chat', label: 'Chat Interface', icon: '💬', path: '/chat-interface.html', active: window.location.pathname.includes('chat-interface') },
         { id: 'files', label: 'Document Management', icon: '📁', path: '/document-management.html', active: window.location.pathname.includes('document-management') }
     ];
 
