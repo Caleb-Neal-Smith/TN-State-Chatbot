@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
 const app = express();
 
@@ -9,8 +10,15 @@ const app = express();
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     next();
 });
+
+// Add JSON body parsing middleware
+app.use(express.json());
+
+// Add URL-encoded body parsing middleware (for form submissions)
+app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from the 'public' directory
 app.use(express.static('public'));
@@ -175,6 +183,55 @@ app.delete('/api/files/:filename', (req, res) => {
         console.error('Error deleting file:', error);
         res.status(500).json({ error: 'Failed to delete file' });
     }
+});
+
+app.post('/api/chat', async (req, res) => {
+    console.log('Received chat request:', req.body); // Add logging to debug request body
+
+    const { model, message } = req.body;
+    if (!model || !message) {
+        return res.status(400).json({ error: 'Missing required fields: model and message' });
+    }
+
+    const ollamaRequest = {
+        hostname: 'localhost',
+        port: 11434,
+        path: '/api/generate',
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    };
+
+    const ollamaReq = http.request(ollamaRequest, (ollamaRes) => {
+        let data = '';
+
+        ollamaRes.on('data', (chunk) => {
+            data += chunk;
+        });
+
+        ollamaRes.on('end', () => {
+            try {
+                const response = JSON.parse(data);
+                res.json({ response: response.response });
+            } catch (error) {
+                console.error('Error parsing Ollama response:', error);
+                res.status(500).json({ error: 'Failed to parse Ollama response' });
+            }
+        });
+    });
+
+    ollamaReq.on('error', (error) => {
+        console.error('Error communicating with Ollama:', error);
+        res.status(500).json({ error: 'Failed to communicate with Ollama' });
+    });
+
+    ollamaReq.write(JSON.stringify({
+        model: model,
+        prompt: message,
+        stream: false
+    }));
+    ollamaReq.end();
 });
 
 // Start the server
