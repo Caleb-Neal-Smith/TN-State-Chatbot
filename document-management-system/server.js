@@ -1,7 +1,9 @@
+require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
 const app = express();
 
@@ -9,8 +11,15 @@ const app = express();
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     next();
 });
+
+// Add JSON body parsing middleware
+app.use(express.json());
+
+// Add URL-encoded body parsing middleware (for form submissions)
+app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from the 'public' directory
 app.use(express.static('public'));
@@ -18,7 +27,7 @@ app.use(express.static('public'));
 // Configure multer for file upload handling
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        const uploadDir = 'uploads';
+        const uploadDir = process.env.UPLOAD_DIR || 'uploads';
         // Create the uploads directory if it doesn't exist
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir);
@@ -47,8 +56,8 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 10 * 1024 * 1024, // Limit each file size to 10MB
-        files: 10 // Limit to 10 files per upload
+        fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // Limit each file size to 10MB
+        files: parseInt(process.env.MAX_FILES) || 10 // Limit to 10 files per upload
     },
     fileFilter: function (req, file, cb) {
         // Define allowed file types
@@ -175,6 +184,55 @@ app.delete('/api/files/:filename', (req, res) => {
         console.error('Error deleting file:', error);
         res.status(500).json({ error: 'Failed to delete file' });
     }
+});
+
+app.post('/api/chat', async (req, res) => {
+    console.log('Received chat request:', req.body); // Add logging to debug request body
+
+    const { model, message } = req.body;
+    if (!model || !message) {
+        return res.status(400).json({ error: 'Missing required fields: model and message' });
+    }
+
+    const ollamaRequest = {
+        hostname: process.env.OLLAMA_ADDRESS || 'localhost',
+        port: parseInt(process.env.OLLAMA_PORT) || 11434,
+        path: '/api/generate',
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    };
+
+    const ollamaReq = http.request(ollamaRequest, (ollamaRes) => {
+        let data = '';
+
+        ollamaRes.on('data', (chunk) => {
+            data += chunk;
+        });
+
+        ollamaRes.on('end', () => {
+            try {
+                const response = JSON.parse(data);
+                res.json({ response: response.response });
+            } catch (error) {
+                console.error('Error parsing Ollama response:', error);
+                res.status(500).json({ error: 'Failed to parse Ollama response' });
+            }
+        });
+    });
+
+    ollamaReq.on('error', (error) => {
+        console.error('Error communicating with Ollama:', error);
+        res.status(500).json({ error: 'Failed to communicate with Ollama' });
+    });
+
+    ollamaReq.write(JSON.stringify({
+        model: model,
+        prompt: message,
+        stream: false
+    }));
+    ollamaReq.end();
 });
 
 // Start the server
