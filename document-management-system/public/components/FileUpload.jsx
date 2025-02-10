@@ -12,13 +12,11 @@ const FileUpload = () => {
       const allowedTypes = [
         'application/pdf',
         'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/jpeg',
-        'image/png'
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       ];
   
       if (!allowedTypes.includes(file.type)) {
-        return 'Invalid file type. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.';
+        return 'Invalid file type. Only PDF, DOC, DOCX files are allowed.';
       }
   
       return null;
@@ -129,7 +127,7 @@ const FileUpload = () => {
             React.createElement('p', {
               key: "file-types",
               className: "text-xs text-gray-500"
-            }, "Multiple files supported: PDF, DOC, DOCX, JPG, PNG (max 10MB each)")
+            }, "Multiple files supported: PDF, DOC, DOCX (max 10MB each)")
           ]),
           React.createElement('input', {
             key: "file-input",

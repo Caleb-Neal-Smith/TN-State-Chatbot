@@ -1,8 +1,18 @@
 const Sidebar = () => {
     const menuItems = [
-        // Add new elements to the Sidebar using the template below:
-        { id: 'files', label: 'Document Management', icon: '📁', path: '/files', active: true }, // Are emojis allowed?
+        { id: 'dashboard', label: 'Dashboard', icon: '🏠', path: '/', active: window.location.pathname === '/' },
+        { id: 'chat', label: 'Chat Interface', icon: '💬', path: '/chat-interface.html', active: window.location.pathname.includes('chat-interface') },
+        { id: 'files', label: 'Document Management', icon: '📁', path: '/document-management.html', active: window.location.pathname.includes('document-management') }
     ];
+
+    // Handles the logic for navigating to a new page on click
+    const handleNavigation = (path) => {
+        if (path === '/') {
+            window.location.href = '/index.html'; // Specifying the root directory
+        } else {
+            window.location.href = path;
+        }
+    };
 
     return React.createElement('aside', {
         id: 'sidebar',
@@ -21,13 +31,14 @@ const Sidebar = () => {
             // Navigation Menu
             React.createElement('nav', {
                 key: 'nav',
-                className: 'py-4' // Removed mt-16 since we have the header now
+                className: 'py-4'
             }, 
                 React.createElement('ul', {
                     className: 'space-y-2'
                 }, menuItems.map(item => 
                     React.createElement('li', {
                         key: item.id,
+                        onClick: () => handleNavigation(item.path), // Travel to item path on click
                         className: `px-4 py-2 cursor-pointer whitespace-nowrap ${
                             item.active 
                                 ? 'bg-tn-dark-blue text-tn-gold' 
