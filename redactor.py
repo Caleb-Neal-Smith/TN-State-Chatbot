@@ -16,12 +16,7 @@ def redact_text(text):
 
     return text
 
-sample_text = """
-My Social Security Number is 123-45-6789.
-My driver's license is 123456789 and credit card is 4111-1111-1111-1111.
-I lives in Tennessee and my phone number is (423)-836-5404.
-My email is tcmartin42@tntech.edu.
-"""
+sample_text = "My Social Security Number is 123-45-6789.My driver's license is 123456789 and credit card is 4111-1111-1111-1111. I lives in Tennessee and my phone number is (423)-836-5404. My email is tcmartin42@tntech.edu."
 
 redacted_text = redact_text(sample_text)
 print(redacted_text)
