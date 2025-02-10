@@ -6,6 +6,7 @@ const fs = require('fs');
 const http = require('http');
 
 const app = express();
+const { logInteraction, getLogs, getStats, exportLogsAsCSV } = require('./db');
 
 // Enable CORS for development
 app.use((req, res, next) => {
@@ -184,13 +185,19 @@ app.delete('/api/files/:filename', (req, res) => {
     }
 });
 
+// Chat Endpoint
 app.post('/api/chat', async (req, res) => {
-    console.log('Received chat request:', req.body); // Add logging to debug request body
+    console.log('Received chat request:', req.body);
 
     const { model, message } = req.body;
     if (!model || !message) {
         return res.status(400).json({ error: 'Missing required fields: model and message' });
     }
+
+    const startTime = Date.now();
+    let errorOccurred = false;
+    let errorMessage = null;
+    let modelResponse = '';
 
     const ollamaRequest = {
         hostname: process.env.OLLAMA_ADDRESS || 'localhost',
@@ -209,20 +216,64 @@ app.post('/api/chat', async (req, res) => {
             data += chunk;
         });
 
-        ollamaRes.on('end', () => {
+        ollamaRes.on('end', async () => {
+            const responseTime = Date.now() - startTime;
+            
             try {
                 const response = JSON.parse(data);
+                modelResponse = response.response;
+                
+                // Log the interaction
+                await logInteraction({
+                    userQuery: message,
+                    modelResponse: response.response,
+                    modelName: model,
+                    responseTime,
+                    tokenCount: response.total_tokens || null,
+                    errorOccurred,
+                    errorMessage
+                });
+
                 res.json({ response: response.response });
             } catch (error) {
+                errorOccurred = true;
+                errorMessage = 'Failed to parse Ollama response';
+                
+                // Log the error
+                await logInteraction({
+                    userQuery: message,
+                    modelResponse: '',
+                    modelName: model,
+                    responseTime,
+                    tokenCount: null,
+                    errorOccurred,
+                    errorMessage
+                });
+
                 console.error('Error parsing Ollama response:', error);
-                res.status(500).json({ error: 'Failed to parse Ollama response' });
+                res.status(500).json({ error: errorMessage });
             }
         });
     });
 
-    ollamaReq.on('error', (error) => {
+    ollamaReq.on('error', async (error) => {
+        const responseTime = Date.now() - startTime;
+        errorOccurred = true;
+        errorMessage = 'Failed to communicate with Ollama';
+
+        // Log the error
+        await logInteraction({
+            userQuery: message,
+            modelResponse: '',
+            modelName: model,
+            responseTime,
+            tokenCount: null,
+            errorOccurred,
+            errorMessage
+        });
+
         console.error('Error communicating with Ollama:', error);
-        res.status(500).json({ error: 'Failed to communicate with Ollama' });
+        res.status(500).json({ error: errorMessage });
     });
 
     ollamaReq.write(JSON.stringify({
@@ -231,6 +282,25 @@ app.post('/api/chat', async (req, res) => {
         stream: false
     }));
     ollamaReq.end();
+});
+
+app.get('/api/logs', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const logs = await getLogs(page);
+        res.json({ logs });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch logs' });
+    }
+});
+
+app.get('/api/stats', async (req, res) => {
+    try {
+        const stats = await getStats();
+        res.json({ stats });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch statistics' });
+    }
 });
 
 // Start the server
