@@ -229,7 +229,6 @@ app.post('/api/chat', async (req, res) => {
                     modelResponse: response.response,
                     modelName: model,
                     responseTime,
-                    tokenCount: response.total_tokens || null,
                     errorOccurred,
                     errorMessage
                 });
@@ -245,7 +244,6 @@ app.post('/api/chat', async (req, res) => {
                     modelResponse: '',
                     modelName: model,
                     responseTime,
-                    tokenCount: null,
                     errorOccurred,
                     errorMessage
                 });
@@ -267,7 +265,6 @@ app.post('/api/chat', async (req, res) => {
             modelResponse: '',
             modelName: model,
             responseTime,
-            tokenCount: null,
             errorOccurred,
             errorMessage
         });

@@ -21,7 +21,6 @@ function initializeDatabase() {
             model_response TEXT NOT NULL,
             model_name TEXT NOT NULL,
             response_time_ms INTEGER NOT NULL,
-            token_count INTEGER,
             error_occurred BOOLEAN DEFAULT 0,
             error_message TEXT
         )
@@ -30,14 +29,14 @@ function initializeDatabase() {
 
 // Log interaction function
 async function logInteraction(data) {
-    const { userQuery, modelResponse, modelName, responseTime, tokenCount, errorOccurred, errorMessage } = data;
+    const { userQuery, modelResponse, modelName, responseTime, errorOccurred, errorMessage } = data;
     
     return new Promise((resolve, reject) => {
         db.run(
             `INSERT INTO interaction_logs 
-            (user_query, model_response, model_name, response_time_ms, token_count, error_occurred, error_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [userQuery, modelResponse, modelName, responseTime, tokenCount, errorOccurred ? 1 : 0, errorMessage],
+            (user_query, model_response, model_name, response_time_ms, error_occurred, error_message)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+            [userQuery, modelResponse, modelName, responseTime, errorOccurred ? 1 : 0, errorMessage],
             function(err) {
                 if (err) {
                     reject(err);
@@ -78,7 +77,6 @@ async function getStats() {
                 COUNT(*) as total_interactions,
                 AVG(response_time_ms) as avg_response_time,
                 SUM(CASE WHEN error_occurred = 1 THEN 1 ELSE 0 END) as error_count,
-                AVG(token_count) as avg_token_count,
                 COUNT(DISTINCT model_name) as model_count
             FROM interaction_logs
         `, [], (err, rows) => {
@@ -102,7 +100,7 @@ async function exportLogsAsCSV() {
                     reject(err);
                 } else {
                     const fields = ['id', 'timestamp', 'user_query', 'model_response', 
-                                  'model_name', 'response_time_ms', 'token_count', 
+                                  'model_name', 'response_time_ms', 
                                   'error_occurred', 'error_message'];
                     
                     const csv = [
