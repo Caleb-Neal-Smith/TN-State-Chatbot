@@ -105,6 +105,11 @@ function MonitoringDashboard() {
                                 )
                             ),
                             e('td', { className: 'px-6 py-4 text-sm' },
+                                e('div', { className: 'max-w-xs truncate' },
+                                    log.model_response
+                                )
+                            ),
+                            e('td', { className: 'px-6 py-4 text-sm' },
                                 `${log.response_time_ms}ms`
                             ),
                             e('td', { className: 'px-6 py-4 text-sm' },
