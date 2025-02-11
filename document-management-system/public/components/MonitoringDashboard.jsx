@@ -77,7 +77,7 @@ function MonitoringDashboard() {
                 e('thead', {}, e('tr', { className: 'bg-gray-50' }, [
                     // Define headers
                     [
-                        { id: 'time', label: 'Time' },
+                        { id: 'time', label: 'Time (UTC)' },
                         { id: 'model', label: 'Model' },
                         { id: 'query', label: 'Query' },
                         { id: 'response-time', label: 'Response Time' },
