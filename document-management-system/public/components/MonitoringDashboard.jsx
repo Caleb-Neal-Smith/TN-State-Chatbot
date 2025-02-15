@@ -206,7 +206,7 @@ function MonitoringDashboard() {
                         { id: 'time', label: 'Time' },
                         { id: 'model', label: 'Model' },
                         { id: 'query', label: 'Query' },
-                        { id: 'response-time', label: 'Response Time' },
+                        { id: 'model_response', label: 'Model Response' },
                         { id: 'status', label: 'Status' }
                     ].map(header =>
                         e('th', {
@@ -226,8 +226,8 @@ function MonitoringDashboard() {
                                 e('td', { className: 'px-6 py-4 text-sm' },
                                     e('div', { className: 'max-w-xs truncate' }, log.user_query)
                                 ),
-                                e('td', { className: 'px-6 py-4 text-sm' },
-                                    `${log.response_time_ms}ms`
+                                e('td', { className: 'px-8 py-4 text-sm' },
+                                    e('div', { className: 'max-w-xs truncate' }, log.model_response)
                                 ),
                                 e('td', { className: 'px-6 py-4 text-sm' },
                                     e('span', {
