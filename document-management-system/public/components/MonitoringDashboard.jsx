@@ -1,4 +1,4 @@
-const { useState, useEffect } = React;
+const { useState, useEffect, useCallback } = React;
 const e = React.createElement;
 
 function MonitoringDashboard() {
@@ -6,23 +6,28 @@ function MonitoringDashboard() {
     const [filteredLogs, setFilteredLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [showColumnSelector, setShowColumnSelector] = useState(false);
+
+    // Define all possible columns
+    const allColumns = [
+        { id: 'timestamp', label: 'Time', show: true },
+        { id: 'model_name', label: 'Model', show: true },
+        { id: 'user_query', label: 'Query', show: true },
+        { id: 'response_time_ms', label: 'Response Time', show: true },
+        { id: 'error_occurred', label: 'Status', show: true },
+        { id: 'token_count', label: 'Tokens', show: false },
+        { id: 'error_message', label: 'Error Details', show: false }
+    ];
+
+    const [visibleColumns, setVisibleColumns] = useState(allColumns);
     const [filters, setFilters] = useState({
-        timeRange: 'all',  // 'all', 'hour', 'day', 'week'
-        model: '',         // model name filter
-        query: '',         // query text filter
-        status: 'all'      // 'all', 'success', 'error'
+        timeRange: 'all',
+        model: '',
+        query: '',
+        status: 'all'
     });
 
-    useEffect(() => {
-        fetchLogs();
-    }, []);
-
-    // Apply filters whenever logs or filters change
-    useEffect(() => {
-        applyFilters();
-    }, [logs, filters]);
-
-    async function fetchLogs() {
+    const fetchLogs = async () => {
         try {
             setLoading(true);
             const response = await fetch('http://localhost:3000/api/logs');
@@ -38,9 +43,13 @@ function MonitoringDashboard() {
         } finally {
             setLoading(false);
         }
-    }
+    };
 
-    function applyFilters() {
+    useEffect(() => {
+        fetchLogs();
+    }, []);
+
+    const applyFilters = useCallback(() => {
         let filtered = [...logs];
 
         // Time range filter
@@ -61,21 +70,18 @@ function MonitoringDashboard() {
             filtered = filtered.filter(log => new Date(log.timestamp) >= cutoff);
         }
 
-        // Model filter
         if (filters.model) {
             filtered = filtered.filter(log => 
                 log.model_name.toLowerCase().includes(filters.model.toLowerCase())
             );
         }
 
-        // Query text filter
         if (filters.query) {
             filtered = filtered.filter(log => 
                 log.user_query.toLowerCase().includes(filters.query.toLowerCase())
             );
         }
 
-        // Status filter
         if (filters.status !== 'all') {
             filtered = filtered.filter(log => 
                 filters.status === 'error' ? log.error_occurred : !log.error_occurred
@@ -83,17 +89,26 @@ function MonitoringDashboard() {
         }
 
         setFilteredLogs(filtered);
-    }
+    }, [logs, filters]);
 
-    // Filter control component
-    const FilterControls = () => {
+    useEffect(() => {
+        applyFilters();
+    }, [applyFilters]);
+
+    // Separate Filter Controls Component
+    const FilterControls = ({ filters, onFilterChange, onReset }) => {
+        // Handle individual filter changes
+        const handleChange = (field, value) => {
+            onFilterChange({ ...filters, [field]: value });
+        };
+
         return e('div', { className: 'mb-6 space-y-4' }, [
             // Time Range Filter
             e('div', { key: 'time-filter', className: 'flex items-center space-x-4' }, [
                 e('label', { className: 'text-sm font-medium text-gray-700' }, 'Time Range:'),
                 e('select', {
                     value: filters.timeRange,
-                    onChange: (e) => setFilters(prev => ({ ...prev, timeRange: e.target.value })),
+                    onChange: (e) => handleChange('timeRange', e.target.value),
                     className: 'rounded-md border-gray-300 shadow-sm focus:border-tn-navy focus:ring-tn-navy'
                 }, [
                     e('option', { value: 'all' }, 'All Time'),
@@ -111,7 +126,7 @@ function MonitoringDashboard() {
                     e('input', {
                         type: 'text',
                         value: filters.model,
-                        onChange: (e) => setFilters(prev => ({ ...prev, model: e.target.value })),
+                        onChange: (e) => handleChange('model', e.target.value),
                         placeholder: 'Filter by model...',
                         className: 'w-full rounded-md border-gray-300 shadow-sm focus:border-tn-navy focus:ring-tn-navy'
                     })
@@ -123,7 +138,7 @@ function MonitoringDashboard() {
                     e('input', {
                         type: 'text',
                         value: filters.query,
-                        onChange: (e) => setFilters(prev => ({ ...prev, query: e.target.value })),
+                        onChange: (e) => handleChange('query', e.target.value),
                         placeholder: 'Search in queries...',
                         className: 'w-full rounded-md border-gray-300 shadow-sm focus:border-tn-navy focus:ring-tn-navy'
                     })
@@ -134,7 +149,7 @@ function MonitoringDashboard() {
                     e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Status:'),
                     e('select', {
                         value: filters.status,
-                        onChange: (e) => setFilters(prev => ({ ...prev, status: e.target.value })),
+                        onChange: (e) => handleChange('status', e.target.value),
                         className: 'w-full rounded-md border-gray-300 shadow-sm focus:border-tn-navy focus:ring-tn-navy'
                     }, [
                         e('option', { value: 'all' }, 'All Status'),
@@ -147,12 +162,7 @@ function MonitoringDashboard() {
             // Reset Filters Button
             e('div', { key: 'reset', className: 'flex justify-end' },
                 e('button', {
-                    onClick: () => setFilters({
-                        timeRange: 'all',
-                        model: '',
-                        query: '',
-                        status: 'all'
-                    }),
+                    onClick: onReset,
                     className: 'text-sm text-gray-600 hover:text-tn-navy'
                 }, 'Reset Filters')
             )
@@ -176,21 +186,165 @@ function MonitoringDashboard() {
         ]);
     }
 
+    const resetFilters = () => {
+        setFilters({
+            timeRange: 'all',
+            model: '',
+            query: '',
+            status: 'all'
+        });
+    };
+
     return e('div', { className: 'p-6' }, [
-        // Header
+        // Header with Column Selector and Export
         e('div', { 
             key: 'header',
             className: 'flex justify-between items-center mb-6' 
         }, [
             e('h2', { className: 'text-xl font-semibold text-tn-navy' }, 'System Logs'),
-            e('button', {
-                onClick: fetchLogs,
-                className: 'px-4 py-2 bg-tn-navy text-white rounded hover:bg-opacity-90'
-            }, 'Refresh')
+            e('div', { className: 'flex space-x-4' }, [
+                // Export Button
+                e('button', {
+                    onClick: () => {
+                        // Create CSV content from filtered logs using visible columns
+                        const headers = visibleColumns
+                            .filter(col => col.show)
+                            .map(col => col.label);
+                        
+                        const csvContent = [
+                            headers.join(','),
+                            ...filteredLogs.map(log => 
+                                visibleColumns
+                                    .filter(col => col.show)
+                                    .map(col => {
+                                        let value = '';
+                                        switch (col.id) {
+                                            case 'timestamp':
+                                                value = new Date(log.timestamp).toLocaleString();
+                                                break;
+                                            case 'model_name':
+                                                value = log.model_name;
+                                                break;
+                                            case 'user_query':
+                                                value = log.user_query;
+                                                break;
+                                            case 'response_time_ms':
+                                                value = log.response_time_ms;
+                                                break;
+                                            case 'token_count':
+                                                value = log.token_count || '';
+                                                break;
+                                            case 'error_occurred':
+                                                value = log.error_occurred ? 'Error' : 'Success';
+                                                break;
+                                            case 'error_message':
+                                                value = log.error_message || '';
+                                                break;
+                                            default:
+                                                value = '';
+                                        }
+                                        // Escape quotes and wrap in quotes if contains comma
+                                        value = String(value).replace(/"/g, '""');
+                                        if (value.includes(',')) {
+                                            value = `"${value}"`;
+                                        }
+                                        return value;
+                                    })
+                                    .join(',')
+                            )
+                        ].join('\n');
+
+                        // Create and trigger download
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        const url = URL.createObjectURL(blob);
+                        link.setAttribute('href', url);
+                        link.setAttribute('download', `logs_export_${new Date().toISOString().split('T')[0]}.csv`);
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    },
+                    className: 'px-4 py-2 bg-white text-tn-navy border border-tn-navy rounded hover:bg-tn-light-blue flex items-center space-x-2'
+                }, [
+                    e('span', { key: 'icon', className: 'text-sm' }, '📥'),
+                    e('span', { key: 'text' }, 'Export CSV')
+                ]),
+                // Column Selector Button
+                e('div', { className: 'relative' }, [
+                    e('button', {
+                        onClick: () => setShowColumnSelector(!showColumnSelector),
+                        className: 'px-4 py-2 bg-white text-tn-navy border border-tn-navy rounded hover:bg-tn-light-blue'
+                    }, 'Columns'),
+                    // Column Selector Dropdown
+                    showColumnSelector && e('div', {
+                        className: 'absolute right-0 mt-2 w-64 bg-white border rounded-lg shadow-lg z-50 p-4'
+                    }, [
+                        e('h3', { 
+                            key: 'title',
+                            className: 'text-sm font-semibold text-gray-700 mb-2' 
+                        }, 'Show/Hide Columns'),
+                        ...visibleColumns.map(col => 
+                            e('div', {
+                                key: col.id,
+                                className: 'flex items-center space-x-2 py-1'
+                            }, [
+                                e('input', {
+                                    type: 'checkbox',
+                                    id: col.id,
+                                    checked: col.show,
+                                    onChange: () => {
+                                        setVisibleColumns(prev => 
+                                            prev.map(c => 
+                                                c.id === col.id ? {...c, show: !c.show} : c
+                                            )
+                                        );
+                                    },
+                                    className: 'text-tn-navy rounded focus:ring-tn-navy'
+                                }),
+                                e('label', {
+                                    htmlFor: col.id,
+                                    className: 'text-sm text-gray-700'
+                                }, col.label)
+                            ])
+                        ),
+                        e('div', {
+                            key: 'buttons',
+                            className: 'mt-4 pt-2 border-t flex justify-between'
+                        }, [
+                            e('button', {
+                                onClick: () => {
+                                    setVisibleColumns(prev => 
+                                        prev.map(c => ({...c, show: true}))
+                                    );
+                                },
+                                className: 'text-xs text-gray-600 hover:text-tn-navy'
+                            }, 'Show All'),
+                            e('button', {
+                                onClick: () => {
+                                    setVisibleColumns(prev => 
+                                        prev.map(c => ({...c, show: false}))
+                                    );
+                                },
+                                className: 'text-xs text-gray-600 hover:text-tn-navy'
+                            }, 'Hide All')
+                        ])
+                    ])
+                ]),
+                // Refresh Button
+                e('button', {
+                    onClick: fetchLogs,
+                    className: 'px-4 py-2 bg-tn-navy text-white rounded hover:bg-opacity-90'
+                }, 'Refresh')
+            ])
         ]),
 
         // Filter Controls
-        e(FilterControls, { key: 'filters' }),
+        e(FilterControls, { 
+            key: 'filters',
+            filters: filters,
+            onFilterChange: setFilters,
+            onReset: resetFilters
+        }),
 
         // Results Count
         e('div', {
@@ -202,43 +356,57 @@ function MonitoringDashboard() {
         e('div', { key: 'table', className: 'overflow-x-auto' }, [
             e('table', { className: 'min-w-full divide-y divide-gray-200' }, [
                 e('thead', { className: 'bg-gray-50' },
-                    e('tr', {}, [
-                        { id: 'time', label: 'Time' },
-                        { id: 'model', label: 'Model' },
-                        { id: 'query', label: 'Query' },
-                        { id: 'response-time', label: 'Response Time' },
-                        { id: 'status', label: 'Status' }
-                    ].map(header =>
-                        e('th', {
-                            key: header.id,
-                            className: 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'
-                        }, header.label)
-                    ))
+                    e('tr', {}, 
+                        visibleColumns
+                            .filter(col => col.show)
+                            .map(col =>
+                                e('th', {
+                                    key: col.id,
+                                    className: 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'
+                                }, col.label)
+                            )
+                    )
                 ),
                 e('tbody', { className: 'bg-white divide-y divide-gray-200' },
                     filteredLogs.length > 0 
                         ? filteredLogs.map(log =>
-                            e('tr', { key: log.id, className: 'hover:bg-gray-50' }, [
-                                e('td', { className: 'px-6 py-4 whitespace-nowrap text-sm text-gray-500' },
-                                    new Date(log.timestamp).toLocaleString()
-                                ),
-                                e('td', { className: 'px-6 py-4 text-sm' }, log.model_name),
-                                e('td', { className: 'px-6 py-4 text-sm' },
-                                    e('div', { className: 'max-w-xs truncate' }, log.user_query)
-                                ),
-                                e('td', { className: 'px-6 py-4 text-sm' },
-                                    `${log.response_time_ms}ms`
-                                ),
-                                e('td', { className: 'px-6 py-4 text-sm' },
-                                    e('span', {
-                                        className: `px-2 py-1 rounded-full text-xs font-medium ${
-                                            log.error_occurred 
-                                                ? 'bg-red-100 text-red-800' 
-                                                : 'bg-green-100 text-green-800'
-                                        }`
-                                    }, log.error_occurred ? 'Error' : 'Success')
-                                )
-                            ])
+                            e('tr', { key: log.id, className: 'hover:bg-gray-50' },
+                                visibleColumns
+                                    .filter(col => col.show)
+                                    .map(col => {
+                                        const cellContent = (() => {
+                                            switch (col.id) {
+                                                case 'timestamp':
+                                                    return new Date(log.timestamp).toLocaleString();
+                                                case 'model_name':
+                                                    return log.model_name;
+                                                case 'user_query':
+                                                    return e('div', { className: 'max-w-xs truncate' }, log.user_query);
+                                                case 'response_time_ms':
+                                                    return `${log.response_time_ms}ms`;
+                                                case 'token_count':
+                                                    return log.token_count || 'N/A';
+                                                case 'error_occurred':
+                                                    return e('span', {
+                                                        className: `px-2 py-1 rounded-full text-xs font-medium ${
+                                                            log.error_occurred 
+                                                                ? 'bg-red-100 text-red-800' 
+                                                                : 'bg-green-100 text-green-800'
+                                                        }`
+                                                    }, log.error_occurred ? 'Error' : 'Success');
+                                                case 'error_message':
+                                                    return log.error_message || '-';
+                                                default:
+                                                    return 'N/A';
+                                            }
+                                        })();
+
+                                        return e('td', {
+                                            key: col.id,
+                                            className: 'px-6 py-4 text-sm'
+                                        }, cellContent);
+                                    })
+                            )
                         )
                         : e('tr', {},
                             e('td', { 
