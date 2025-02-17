@@ -13,9 +13,9 @@ function MonitoringDashboard() {
         { id: 'timestamp', label: 'Time', show: true },
         { id: 'model_name', label: 'Model', show: true },
         { id: 'user_query', label: 'Query', show: true },
+        { id: 'model_response', label: 'Model Response', show: true },
         { id: 'response_time_ms', label: 'Response Time', show: true },
         { id: 'error_occurred', label: 'Status', show: true },
-        { id: 'token_count', label: 'Tokens', show: false },
         { id: 'error_message', label: 'Error Details', show: false }
     ];
 
@@ -228,11 +228,11 @@ function MonitoringDashboard() {
                                             case 'user_query':
                                                 value = log.user_query;
                                                 break;
+                                            case 'model_response':
+                                                value = log.model_response;
+                                                break;
                                             case 'response_time_ms':
                                                 value = log.response_time_ms;
-                                                break;
-                                            case 'token_count':
-                                                value = log.token_count || '';
                                                 break;
                                             case 'error_occurred':
                                                 value = log.error_occurred ? 'Error' : 'Success';
@@ -382,10 +382,10 @@ function MonitoringDashboard() {
                                                     return log.model_name;
                                                 case 'user_query':
                                                     return e('div', { className: 'max-w-xs truncate' }, log.user_query);
+                                                case 'model_response':
+                                                    return e('div', { className: 'max-w-xs truncate' }, log.model_response);
                                                 case 'response_time_ms':
                                                     return `${log.response_time_ms}ms`;
-                                                case 'token_count':
-                                                    return log.token_count || 'N/A';
                                                 case 'error_occurred':
                                                     return e('span', {
                                                         className: `px-2 py-1 rounded-full text-xs font-medium ${
