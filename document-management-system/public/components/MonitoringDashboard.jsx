@@ -13,9 +13,9 @@ function MonitoringDashboard() {
         { id: 'timestamp', label: 'Time', show: true },
         { id: 'model_name', label: 'Model', show: true },
         { id: 'user_query', label: 'Query', show: true },
-        { id: 'model_response', label: 'Response', show: true },
         { id: 'response_time_ms', label: 'Response Time', show: true },
         { id: 'error_occurred', label: 'Status', show: true },
+        { id: 'token_count', label: 'Tokens', show: false },
         { id: 'error_message', label: 'Error Details', show: false }
     ];
 
@@ -196,13 +196,79 @@ function MonitoringDashboard() {
     };
 
     return e('div', { className: 'p-6' }, [
-        // Header with Column Selector
+        // Header with Column Selector and Export
         e('div', { 
             key: 'header',
             className: 'flex justify-between items-center mb-6' 
         }, [
             e('h2', { className: 'text-xl font-semibold text-tn-navy' }, 'System Logs'),
             e('div', { className: 'flex space-x-4' }, [
+                // Export Button
+                e('button', {
+                    onClick: () => {
+                        // Create CSV content from filtered logs using visible columns
+                        const headers = visibleColumns
+                            .filter(col => col.show)
+                            .map(col => col.label);
+                        
+                        const csvContent = [
+                            headers.join(','),
+                            ...filteredLogs.map(log => 
+                                visibleColumns
+                                    .filter(col => col.show)
+                                    .map(col => {
+                                        let value = '';
+                                        switch (col.id) {
+                                            case 'timestamp':
+                                                value = new Date(log.timestamp).toLocaleString();
+                                                break;
+                                            case 'model_name':
+                                                value = log.model_name;
+                                                break;
+                                            case 'user_query':
+                                                value = log.user_query;
+                                                break;
+                                            case 'response_time_ms':
+                                                value = log.response_time_ms;
+                                                break;
+                                            case 'token_count':
+                                                value = log.token_count || '';
+                                                break;
+                                            case 'error_occurred':
+                                                value = log.error_occurred ? 'Error' : 'Success';
+                                                break;
+                                            case 'error_message':
+                                                value = log.error_message || '';
+                                                break;
+                                            default:
+                                                value = '';
+                                        }
+                                        // Escape quotes and wrap in quotes if contains comma
+                                        value = String(value).replace(/"/g, '""');
+                                        if (value.includes(',')) {
+                                            value = `"${value}"`;
+                                        }
+                                        return value;
+                                    })
+                                    .join(',')
+                            )
+                        ].join('\n');
+
+                        // Create and trigger download
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        const url = URL.createObjectURL(blob);
+                        link.setAttribute('href', url);
+                        link.setAttribute('download', `logs_export_${new Date().toISOString().split('T')[0]}.csv`);
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    },
+                    className: 'px-4 py-2 bg-white text-tn-navy border border-tn-navy rounded hover:bg-tn-light-blue flex items-center space-x-2'
+                }, [
+                    e('span', { key: 'icon', className: 'text-sm' }, '📥'),
+                    e('span', { key: 'text' }, 'Export CSV')
+                ]),
                 // Column Selector Button
                 e('div', { className: 'relative' }, [
                     e('button', {
@@ -316,10 +382,10 @@ function MonitoringDashboard() {
                                                     return log.model_name;
                                                 case 'user_query':
                                                     return e('div', { className: 'max-w-xs truncate' }, log.user_query);
-                                                case 'model_response':
-                                                    return e('div', { className: 'max-w-xs truncate' }, log.model_response);
                                                 case 'response_time_ms':
                                                     return `${log.response_time_ms}ms`;
+                                                case 'token_count':
+                                                    return log.token_count || 'N/A';
                                                 case 'error_occurred':
                                                     return e('span', {
                                                         className: `px-2 py-1 rounded-full text-xs font-medium ${
