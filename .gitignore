@@ -4,6 +4,10 @@ document-management-system/node_modules
 # User Uploaded Files
 document-management-system/uploads
 
+
+# Ignore .env
+.env
+
 # Environments
 .venv
 venv/
@@ -11,3 +15,4 @@ venv/
 
 # idea directory
 .idea/
+
