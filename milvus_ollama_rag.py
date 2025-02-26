@@ -1,11 +1,11 @@
 # import arxiv
 from llama_index.core import SimpleDirectoryReader
 from llama_index.vector_stores.milvus import MilvusVectorStore
-from llama_index.core import VectorStoreIndex, Settings
+from llama_index.core import VectorStoreIndex, Settings, StorageContext, load_index_from_storage
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 # from pymilvus import MilvusClient
-from dotenv import load_dotenv
+from dotenv import load_dotenv # Need to have a LlamaParse key saved in .env as "LLAMA_CLOUD_API_KEY=llx-xxxxxx"
 load_dotenv()
 from llama_parse import LlamaParse
 
@@ -19,7 +19,7 @@ dir_name = "./Documents/pdf_data/"
 # use SimpleDirectoryReader to parse our file
 file_extractor = {".pdf": parser}
 documents = SimpleDirectoryReader(input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"], file_extractor=file_extractor).load_data()
-print(documents)
+# print(documents)
 
 # arxiv_client = arxiv.Client()
 # paper = next(arxiv.Client().results(arxiv.Search(id_list=["1706.03762"])))
@@ -56,8 +56,19 @@ Settings.embed_model = embedding_model
 Settings.chunk_size = 128
 Settings.chunk_overlap = 64
 
-index = VectorStoreIndex.from_documents(documents)
-print("Number of nodes:", len(index.docstore.docs))
+# storage_context = StorageContext.from_defaults(
+#     persist_dir="storage"
+# )
+
+storage_context = StorageContext.from_defaults(
+    vector_store=vector_store
+)
+
+# index = load_index_from_storage(storage_context)  # loads all indices
+
+index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
+index.storage_context.persist(persist_dir="storage")
+# print("Number of nodes:", len(index.docstore.docs))
 
 query_engine = index.as_query_engine()
 
