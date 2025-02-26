@@ -11,7 +11,6 @@ document-management-system/uploads
 # Environments
 .venv
 venv/
-.env
 
 # idea directory
 .idea/

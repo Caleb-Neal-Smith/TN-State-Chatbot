@@ -5,7 +5,7 @@ from llama_index.core import VectorStoreIndex, Settings, StorageContext, load_in
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 # from pymilvus import MilvusClient
-from dotenv import load_dotenv # Need to have a Llama Cloud API Key saved in .env as "LLAMA_CLOUD_API_KEY=llx-xxxxxx"
+from dotenv import load_dotenv
 load_dotenv()
 from llama_parse import LlamaParse
 
