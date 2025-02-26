@@ -67,7 +67,7 @@ storage_context = StorageContext.from_defaults(
 # index = load_index_from_storage(storage_context)  # loads all indices
 
 index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
-index.storage_context.persist(persist_dir="storage")
+index.storage_context.persist(persist_dir="Documents/storage")
 # print("Number of nodes:", len(index.docstore.docs))
 
 query_engine = index.as_query_engine()

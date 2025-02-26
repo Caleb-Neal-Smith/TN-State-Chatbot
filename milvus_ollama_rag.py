@@ -2,6 +2,9 @@
 from llama_index.core import SimpleDirectoryReader
 from llama_index.vector_stores.milvus import MilvusVectorStore
 from llama_index.core import VectorStoreIndex, Settings, StorageContext, load_index_from_storage
+from llama_index.core.storage.docstore import SimpleDocumentStore
+from llama_index.core.storage.index_store import SimpleIndexStore
+# from llama_index.core.storage.vector_stores import SimpleVectorStore
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 # from pymilvus import MilvusClient
@@ -16,7 +19,7 @@ parser = LlamaParse(
 
 dir_name = "./Documents/pdf_data/"
 
-# use SimpleDirectoryReader to parse our file
+# # use SimpleDirectoryReader to parse our file
 file_extractor = {".pdf": parser}
 documents = SimpleDirectoryReader(input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"], file_extractor=file_extractor).load_data()
 # print(documents)
@@ -56,18 +59,24 @@ Settings.embed_model = embedding_model
 Settings.chunk_size = 128
 Settings.chunk_overlap = 64
 
-# storage_context = StorageContext.from_defaults(
-#     persist_dir="storage"
-# )
+
 
 storage_context = StorageContext.from_defaults(
-    vector_store=vector_store
+    persist_dir = "storage"
 )
+
+# storage_context = StorageContext.from_defaults(
+#     docstore=SimpleDocumentStore.from_persist_dir(persist_dir="storage"),
+#     vector_store=vector_store,
+#     index_store=SimpleIndexStore.from_persist_dir(persist_dir="storage"),
+# )
 
 # index = load_index_from_storage(storage_context)  # loads all indices
 
-index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
+index = VectorStoreIndex.from_documents(documents, storage_context=storage_context,vector_store=vector_store)
+# index = VectorStoreIndex.from_vector_store(vector_store)
 index.storage_context.persist(persist_dir="storage")
+#vector_store.persist("storage")
 # print("Number of nodes:", len(index.docstore.docs))
 
 query_engine = index.as_query_engine()
