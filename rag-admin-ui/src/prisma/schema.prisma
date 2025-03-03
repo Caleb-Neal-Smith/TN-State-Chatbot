@@ -21,6 +21,7 @@ model User {
   models     RagModel[]
   sources    DocumentSource[]
   queries    Query[]
+  embeddingsConfigs EmbeddingsConfig[]
 
   @@map("users")
 }
