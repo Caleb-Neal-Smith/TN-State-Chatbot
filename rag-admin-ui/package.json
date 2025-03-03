@@ -9,19 +9,33 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.0",
+    "@prisma/client": "^6.4.1",
+    "@tailwindcss/forms": "^0.5.10",
+    "@tremor/react": "^3.18.7",
+    "autoprefixer": "^10.4.20",
+    "bcryptjs": "^3.0.2",
+    "jose": "^6.0.8",
+    "lucide-react": "^0.477.0",
+    "next": "15.2.0",
+    "pg": "^8.13.3",
+    "postcss": "^8.5.3",
+    "prisma": "^6.4.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "next": "15.2.0"
+    "recharts": "^2.15.1"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "15.2.0",
-    "@eslint/eslintrc": "^3"
-  }
+    "tailwindcss": "^4.0.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@10.5.0+sha512.11106a5916c7406fe4b8cb8e3067974b8728f47308a4f5ac5e850304afa6f57e2847d7950dfe78877d8d36bfb401d381c4215db3a4c3547ffa63c14333a6fa51"
 }
