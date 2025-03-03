@@ -18,3 +18,38 @@ venv/
 # Ignore Production Databases
 *.db
 
+# dependencies
+rag-admin/node_modules
+rag-admin/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+rag-admin/coverage
+
+# next.js
+rag-admin/.next/
+rag-admin/out/
+
+# production
+rag-admin/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+
