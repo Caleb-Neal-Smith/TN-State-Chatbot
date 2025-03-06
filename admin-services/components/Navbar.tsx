@@ -2,7 +2,6 @@
 
 import { Bell, User, Settings } from 'lucide-react'
 import { SidebarTrigger } from './ui/sidebar'
-import PageTitle from './PageTitle'
 
 export default function Navbar() {
   return (
@@ -10,7 +9,7 @@ export default function Navbar() {
       <div className="px-4 py-3 flex items-center justify-between">
         <div>
           <SidebarTrigger className="-ml-1" />
-          <PageTitle />
+          <h1 className="text-xl font-semibold text-gray-800 px-2">RAG Admin Dashboard</h1>
         </div>
         
         <div className="flex items-center space-x-4">
