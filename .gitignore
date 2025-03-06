@@ -19,8 +19,8 @@ venv/
 *.db
 
 # dependencies
-rag-admin/node_modules
-rag-admin/.pnp
+admin-services/node_modules
+admin-services/.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -29,14 +29,14 @@ rag-admin/.pnp
 !.yarn/versions
 
 # testing
-rag-admin/coverage
+admin-services/coverage
 
 # next.js
-rag-admin/.next/
-rag-admin/out/
+admin-services/.next/
+admin-services/out/
 
 # production
-rag-admin/build
+admin-services/build
 
 # misc
 .DS_Store
