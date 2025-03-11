@@ -1,13 +1,9 @@
-# import arxiv
 from llama_index.core import SimpleDirectoryReader
 from llama_index.vector_stores.milvus import MilvusVectorStore
-from llama_index.core import VectorStoreIndex, Settings, StorageContext, load_index_from_storage
-from llama_index.core.storage.docstore import SimpleDocumentStore
-from llama_index.core.storage.index_store import SimpleIndexStore
-# from llama_index.core.storage.vector_stores import SimpleVectorStore
+from llama_index.core import VectorStoreIndex, Settings
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-# from pymilvus import MilvusClient
+from pymilvus import MilvusClient
 from dotenv import load_dotenv # Need to have a Llama Cloud API Key saved in .env as "LLAMA_CLOUD_API_KEY=llx-xxxxxx"
 load_dotenv()
 from llama_parse import LlamaParse
@@ -22,23 +18,21 @@ dir_name = "./Documents/pdf_data/"
 # # use SimpleDirectoryReader to parse our file
 file_extractor = {".pdf": parser}
 documents = SimpleDirectoryReader(input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"], file_extractor=file_extractor).load_data()
-# print(documents)
 
-# arxiv_client = arxiv.Client()
-# paper = next(arxiv.Client().results(arxiv.Search(id_list=["1706.03762"])))
-
-# Download the PDF to a specified directory with a custom filename.
-# paper.download_pdf(dirpath=dir_name, filename="attention.pdf")
+# uri for Milvus Standalone: http://localhost:19530
 
 vector_store = MilvusVectorStore(
     uri="http://localhost:19530",  dim=768, overwrite=True
 )
 
+client = MilvusClient(uri="http://localhost:19530", token="root:Milvus")
+
+
 embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
 llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0)
 
 # pdf_document = SimpleDirectoryReader(
-#     input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"]
+#     input_files=[f"{dir_name}attention.pdf"]
 # ).load_data()
 # print("Number of Input documents:", len(pdf_document))
 
@@ -59,25 +53,8 @@ Settings.embed_model = embedding_model
 Settings.chunk_size = 128
 Settings.chunk_overlap = 64
 
-
-
-# storage_context = StorageContext.from_defaults(
-#     persist_dir = "storage"
-# )
-
-storage_context = StorageContext.from_defaults(
-    docstore=SimpleDocumentStore.from_persist_dir(persist_dir="storage"),
-    vector_store=vector_store,
-    index_store=SimpleIndexStore.from_persist_dir(persist_dir="storage"),
-)
-
-# index = load_index_from_storage(storage_context)  # loads all indices
-
-index = VectorStoreIndex.from_documents(documents, storage_context=storage_context,vector_store=vector_store)
-# index = VectorStoreIndex.from_vector_store(vector_store)
-index.storage_context.persist(persist_dir="storage")
-#vector_store.persist("storage")
-# print("Number of nodes:", len(index.docstore.docs))
+index = VectorStoreIndex.from_documents(documents)
+print("Number of nodes:", len(index.docstore.docs))
 
 query_engine = index.as_query_engine()
 
@@ -94,7 +71,3 @@ while(choice != 1):
     print(result)
 
     choice = int(input("Enter 0 to ask another question or 1 to exit: "))
-"""
-Output:
-Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions. With a single attention head, averaging inhibits this.
-"""

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from llama_parse import LlamaParse
 
-storage_context.persist(persist_dir="./storage")
+storage_context.persist(persist_dir="Documents/storage")
 
 # set up parser
 parser = LlamaParse(
