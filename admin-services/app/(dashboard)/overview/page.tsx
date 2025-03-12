@@ -1,40 +1,9 @@
-import { Metadata } from 'next'
-import MetricsOverview from '@/components/dashboard/MetricsOverview'
-import QueryStats from '@/components/dashboard/QueryStats'
-import ResourceUsage from '@/components/dashboard/ResourceUsage'
-import RecentQueries from '@/components/dashboard/RecentQueries'
+'use server'
 
-export const metadata: Metadata = {
-  title: 'Dashboard | RAG Admin',
-  description: 'Main dashboard for RAG administration',
-}
-
-export default function DashboardPage() {
+export default async function DashboardPage() {
   return (
-    <div className="space-y-6 mr-4 ml-4 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
-        <div className="flex items-center space-x-2">
-          <span className="text-sm text-gray-500">Last updated: Just now</span>
-          <button className="px-3 py-1 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700">
-            Refresh
-          </button>
-        </div>
-      </div>
-      
-      {/* Metrics Cards */}
-      <MetricsOverview />
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Query Statistics */}
-        <QueryStats />
-        
-        {/* Resource Usage */}
-        <ResourceUsage />
-      </div>
-      
-      {/* Recent Queries Table */}
-      <RecentQueries />
+    <div className="flex py-1">
+      <iframe className="w-full h-screen" src="http://localhost:5601/app/dashboards?auth_provider_hint=anonymous1#/view/edf84fe0-e1a0-11e7-b6d5-4dc382ef7f5b?embed=true&_g=(refreshInterval%3A(pause%3A!t%2Cvalue%3A60000)%2Ctime%3A(from%3Anow-7d%2Fd%2Cto%3Anow))&show-query-input=true&show-time-filter=true" height="600" width="800"></iframe>
     </div>
   )
 }
