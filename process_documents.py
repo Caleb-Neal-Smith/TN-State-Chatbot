@@ -28,6 +28,7 @@ llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0)
 Settings.llm = llm
 Settings.embed_model = embedding_model
 
+# IMPORTANT: Experiment with chunk sizes and evaluate with performance metrics!!!
 Settings.chunk_size = 128
 Settings.chunk_overlap = 64
 

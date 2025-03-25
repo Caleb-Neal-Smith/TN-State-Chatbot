@@ -12,7 +12,7 @@ llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0)
 embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
 Settings.llm = llm
-Settings.embed_model = embedding_model
+Settings.embed_model = embedding_model # "Settings.embed_model = None" (?)
 
 index = VectorStoreIndex.from_vector_store(vector_store)
 
