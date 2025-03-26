@@ -18,7 +18,7 @@ export default function ChatInterface() {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto">
+    <div className="flex flex-col h-svh max-w-4xl mx-auto">
       {/* Chat messages container with fixed height and scrolling */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
