@@ -2,12 +2,13 @@
 export interface Document {
     id: string;
     name: string;
-    description?: string;
+    description?: string | null; // Now accepts string, undefined, OR null
     fileType: string;
     fileSize: number;
     filePath: string;
     uploadedAt: Date;
     updatedAt: Date;
+    documentTagId?: string | null; // Added this field
   }
   
   // Query parameters for document listing

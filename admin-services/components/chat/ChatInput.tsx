@@ -1,8 +1,8 @@
 'use client';
 // components/_components/chat/ChatInput.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Send, RotateCcw } from 'lucide-react';
-import { Editor, EditorContent } from '@tiptap/react';
+import { EditorContent } from '@tiptap/react';
 import { useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -14,7 +14,6 @@ interface ChatInputProps {
 
 export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
   const [messageText, setMessageText] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const editor = useEditor({
     extensions: [

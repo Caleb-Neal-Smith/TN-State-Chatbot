@@ -1,30 +1,8 @@
 // app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { generateCompletion, streamCompletion } from '@/services/ollama';
-import { Readable } from 'stream';
 
-// Helper to convert a ReadableStream to a Node.js Readable stream
-function readableStreamToNodeStream(readableStream: ReadableStream<Uint8Array>): Readable {
-  const reader = readableStream.getReader();
-  const nodeStream = new Readable({
-    read() {
-      reader.read().then(
-        ({ value, done }) => {
-          if (done) {
-            this.push(null);
-            return;
-          }
-          this.push(value);
-        },
-        (error) => {
-          this.destroy(error);
-        }
-      );
-    },
-  });
-  
-  return nodeStream;
-}
+
 
 // Non-streaming handler
 export async function POST(req: NextRequest) {

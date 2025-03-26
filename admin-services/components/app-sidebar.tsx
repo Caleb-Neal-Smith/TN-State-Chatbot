@@ -1,4 +1,4 @@
-import { Wrench, Home, Inbox, Search, Settings, BookOpenText } from "lucide-react"
+import { Wrench, Home, Inbox, Settings, BookOpenText } from "lucide-react"
 
 import {
   Sidebar,

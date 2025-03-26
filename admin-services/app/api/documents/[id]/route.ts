@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { join } from 'path';
-import { readFile, unlink } from 'fs/promises';
+import { unlink } from 'fs/promises';
 import { documentService } from '@/services/documentService';
 
 // GET /api/documents/[id] - Get document by ID

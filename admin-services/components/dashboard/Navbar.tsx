@@ -1,4 +1,4 @@
-import { Bell, User, Settings } from 'lucide-react'
+import { Bell, User } from 'lucide-react'
 import { SidebarTrigger } from '../ui/sidebar'
 
 export default function Navbar() {

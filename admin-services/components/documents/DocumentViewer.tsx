@@ -11,7 +11,7 @@ interface DocumentViewerProps {
 export default function DocumentViewer({ documentId, fileType }: DocumentViewerProps) {
   const [viewerUrl, setViewerUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(null);
   
   useEffect(() => {
     // Generate a secured, temporary URL for viewing the document
@@ -148,15 +148,8 @@ function OfficePreview({ documentId, fileType }: { documentId: string; fileType:
   const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
-    // In a real implementation, you would generate a thumbnail for Office documents
-    // Here we'll simulate loading a thumbnail
     const fetchThumbnail = async () => {
       try {
-        // In a real app, you would fetch a real thumbnail
-        // For this demo, we'll just wait a bit to simulate loading
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Set a placeholder thumbnail URL (in a real app, this would be a real thumbnail)
         setThumbnail(`/api/documents/${documentId}/thumbnail`);
       } catch (error) {
         console.error('Error loading thumbnail:', error);
