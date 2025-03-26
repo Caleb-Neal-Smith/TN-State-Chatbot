@@ -29,8 +29,8 @@ const items = [
     icon: BookOpenText,
   },
   {
-    title: "Configure",
-    url: "#",
+    title: "Test",
+    url: "/chat",
     icon: Wrench,
   },
   {
