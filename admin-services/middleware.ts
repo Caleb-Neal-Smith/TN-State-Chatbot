@@ -3,19 +3,25 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // Extract the pathname from the request URL
-  const { pathname } = request.nextUrl;
-  
-  // Only redirect for the exact root path
-  if (pathname === '/') {
-    return NextResponse.redirect(new URL('/overview', request.url));
+  // Get the response
+  const response = NextResponse.next();
+
+  // Add CORS headers for API routes
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    // Allow requests from the orchestration service domain
+    const orchestrationServiceUrl = process.env.ORCHESTRATION_SERVICE_URL || 'http://localhost:9000';
+    const orchestrationDomain = new URL(orchestrationServiceUrl).origin;
+    
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Access-Control-Max-Age', '86400'); // 24 hours
   }
-  
-  // Continue with the request for all other paths
-  return NextResponse.next();
+
+  return response;
 }
 
-// Only run this middleware on the homepage
+// Specify which paths this middleware should run on
 export const config = {
-  matcher: '/',
+  matcher: '/api/:path*',
 };
