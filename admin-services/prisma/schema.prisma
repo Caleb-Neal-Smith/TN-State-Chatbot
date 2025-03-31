@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Document model for document management
+model Document {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  fileType    String
+  fileSize    Int
+  filePath    String
+  uploadedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Add relation to a User model if your application has one
+  // userId     String
+  // user       User     @relation(fields: [userId], references: [id])
+
+  // Add relation to tags if you want to implement document tagging
+  // tags       DocumentTag[]
+  DocumentTag   DocumentTag? @relation(fields: [documentTagId], references: [id])
+  documentTagId String?
+
+  @@index([name])
+  @@index([fileType])
+  @@index([uploadedAt])
+}
+
+// Optional: Document tag model if you want to implement tagging
+model DocumentTag {
+  id   String @id @default(uuid())
+  name String @unique
+
+  // Relation to documents
+  documents Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
