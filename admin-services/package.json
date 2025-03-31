@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:deploy": "npx prisma migrate deploy && npx prisma generate"
   },
   "dependencies": {
     "@prisma/client": "6.5.0",
@@ -27,11 +28,13 @@
     "@tiptap/extension-placeholder": "^2.11.5",
     "@tiptap/react": "^2.11.5",
     "@tiptap/starter-kit": "^2.11.5",
+    "ai-digest": "^1.0.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "file-loader": "^6.2.0",
     "lucide-react": "^0.477.0",
+    "nanoid": "^5.1.5",
     "next": "15.2.1-canary.5",
     "next-themes": "^0.4.4",
     "prisma": "^6.5.0",
