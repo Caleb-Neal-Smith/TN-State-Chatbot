@@ -6,10 +6,14 @@ from llama_index.vector_stores.milvus import MilvusVectorStore
 
 dir_name = "./Documents/pdf_data/"
 
+# documents = SimpleDirectoryReader(
+#     input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"]
+# ).load_data()
+# print("Number of Input documents:", len(documents))
+
 documents = SimpleDirectoryReader(
-    input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"]
+        dir_name, recursive=True
 ).load_data()
-print("Number of Input documents:", len(documents))
 
 # load documents
 # documents = SimpleDirectoryReader(
