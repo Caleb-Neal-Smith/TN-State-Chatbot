@@ -8,7 +8,7 @@ vector_store = MilvusVectorStore(
     uri="http://localhost:19530", dim=768, overwrite=False
 )
 
-llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0)
+llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0, streaming=True)
 embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
 Settings.llm = llm
