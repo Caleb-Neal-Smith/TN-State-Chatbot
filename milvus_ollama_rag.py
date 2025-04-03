@@ -24,6 +24,7 @@ dir_name = "./Documents/pdf_data/"
 #documents = SimpleDirectoryReader(input_files = [f"{dir_name}attention.pdf"]).load_data()
 #print("Number of Input Documents: ", len(documents))
 
+
 vector_store = MilvusVectorStore(uri="./milvus-rag.db",dim=1024, overwrite=False)
 embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5")
 llm = Ollama(model="llama3.3",temperature=0.1, request_timeout=480.0)
@@ -37,16 +38,19 @@ Settings.embed_model = embedding_model
 Settings.chunk_size = 256
 Settings.chunk_overlap = 64
 
+documents = SimpleDirectoryReader(
+        dir_name, recursive=True
+).load_data()
 
 
-#index = VectorStoreIndex.from_documents(documents, vector_store=vector_store)
-#index.storage_context.persist(persist_dir="./storage")
+index = VectorStoreIndex.from_documents(documents, vector_store=vector_store)
+index.storage_context.persist(persist_dir="./storage")
 
  
  
-storage_context = StorageContext.from_defaults(persist_dir="storage")
+#storage_context = StorageContext.from_defaults(persist_dir="storage")
 
-index = load_index_from_storage(storage_context)
+#index = load_index_from_storage(storage_context)
 
 
 
