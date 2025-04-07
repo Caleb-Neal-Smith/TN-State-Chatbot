@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Any, Union
 
 import httpx
 import uvicorn
-from elasticsearch import AsyncElasticsearch
+from opensearchpy import AsyncOpenSearch
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -47,22 +47,36 @@ class OrchestrationService:
     def __init__(
         self,
         ollama_api_url: str,
-        elasticsearch_url: Optional[str] = None,
-        elasticsearch_index: str = "rag-interactions",
+        opensearch_url: Optional[str] = None,
+        opensearch_index: str = "rag-interactions",
+        opensearch_username: Optional[str] = None,
+        opensearch_password: Optional[str] = None,
         cache_url: Optional[str] = None,
         context_builder_url: Optional[str] = None,
     ):
         self.ollama_api_url = ollama_api_url
-        self.elasticsearch_url = elasticsearch_url
-        self.elasticsearch_index = elasticsearch_index
+        self.opensearch_url = opensearch_url
+        self.opensearch_index = opensearch_index
+        self.opensearch_username = opensearch_username
+        self.opensearch_password = opensearch_password
         self.cache_url = cache_url
         self.context_builder_url = context_builder_url
         self.client = httpx.AsyncClient(timeout=120.0)
         
-        # Initialize Elasticsearch client if URL is provided
-        self.es_client = None
-        if elasticsearch_url:
-            self.es_client = AsyncElasticsearch([elasticsearch_url])
+        # Initialize OpenSearch client if URL is provided
+        self.os_client = None
+        if opensearch_url:
+            auth = None
+            if opensearch_username and opensearch_password:
+                auth = (opensearch_username, opensearch_password)
+                
+            self.os_client = AsyncOpenSearch(
+                hosts=[opensearch_url],
+                http_auth=auth,
+                use_ssl=opensearch_url.startswith("https"),
+                verify_certs=False,  # For development; set to True in production with proper certs
+                ssl_show_warn=False
+            )
         
         # Statistics tracking
         self.total_requests = 0
@@ -72,10 +86,10 @@ class OrchestrationService:
         self.start_time = time.time()
 
     async def close(self):
-        """Close HTTP client and Elasticsearch client connections."""
+        """Close HTTP client and OpenSearch client connections."""
         await self.client.aclose()
-        if self.es_client:
-            await self.es_client.close()
+        if self.os_client:
+            await self.os_client.close()
 
     async def check_cache(self, query: str) -> Optional[Dict[str, Any]]:
         """Check if a response for the given query exists in the cache."""
@@ -130,14 +144,15 @@ class OrchestrationService:
         session_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
-        """Log an interaction to Elasticsearch."""
-        if not self.es_client:
+    # """Log an interaction to OpenSearch."""
+        if not self.os_client:
+            logger.warning("OpenSearch client not initialized, skipping logging")
             return False
             
         try:
             # Create log document
             log_data = {
-                "@timestamp": int(time.time() * 1000),  # Elasticsearch timestamp format (milliseconds)
+                "@timestamp": int(time.time() * 1000),  # OpenSearch timestamp format (milliseconds)
                 "query_id": str(uuid.uuid4()),
                 "query": query,
                 "response": response,
@@ -148,27 +163,35 @@ class OrchestrationService:
                 "metadata": metadata or {}
             }
             
-            # Index the document in Elasticsearch
-            result = await self.es_client.index(
-                index=self.elasticsearch_index,
-                document=log_data,
+            # Ensure the index exists
+            if not await self.ensure_opensearch_index():
+                logger.error("Failed to ensure index exists before logging")
+                return False
+                
+            # Index the document in OpenSearch
+            result = await self.os_client.index(
+                index=self.opensearch_index,
+                body=log_data,
                 refresh=True  # Make document immediately searchable
             )
             
-            logger.info(f"Logged interaction to Elasticsearch: {result['_id']}")
+            logger.info(f"Logged interaction to OpenSearch: {result['_id']}")
             return True
         except Exception as e:
-            logger.warning(f"Elasticsearch logging failed: {e}")
+            logger.error(f"OpenSearch logging failed: {e}", exc_info=True)
             return False
-
-    async def ensure_elasticsearch_index(self) -> bool:
-        """Ensure the Elasticsearch index exists with proper mapping."""
-        if not self.es_client:
+    
+    async def ensure_opensearch_index(self) -> bool:
+    #Ensure the OpenSearch index exists with proper mapping.
+        if not self.os_client:
+            logger.warning("OpenSearch client not initialized, cannot ensure index")
             return False
             
         try:
             # Check if the index exists
-            index_exists = await self.es_client.indices.exists(index=self.elasticsearch_index)
+            logger.info(f"Checking if index exists: {self.opensearch_index}")
+            index_exists = await self.os_client.indices.exists(index=self.opensearch_index)
+            logger.info(f"Index exists check result: {index_exists}")
             
             if not index_exists:
                 # Define index mapping
@@ -193,16 +216,18 @@ class OrchestrationService:
                 }
                 
                 # Create the index with mapping
-                await self.es_client.indices.create(
-                    index=self.elasticsearch_index,
+                logger.info(f"Creating index: {self.opensearch_index} with mapping: {mapping}")
+                create_result = await self.os_client.indices.create(
+                    index=self.opensearch_index,
                     body=mapping
                 )
+                logger.info(f"Index creation result: {create_result}")
                 
-                logger.info(f"Created Elasticsearch index: {self.elasticsearch_index}")
+                logger.info(f"Created OpenSearch index: {self.opensearch_index}")
             
             return True
         except Exception as e:
-            logger.error(f"Failed to ensure Elasticsearch index: {e}")
+            logger.error(f"Failed to ensure OpenSearch index: {e}", exc_info=True)
             return False
 
     async def process_query(self, request: QueryRequest) -> Dict[str, Any]:
@@ -452,16 +477,20 @@ app.add_middleware(
 
 # Service configuration from environment
 ollama_api_url = os.getenv("OLLAMA_API_URL", "http://localhost:8000")
-elasticsearch_url = os.getenv("ELASTICSEARCH_URL")
-elasticsearch_index = os.getenv("ELASTICSEARCH_INDEX", "rag-interactions")
+opensearch_url = os.getenv("OPENSEARCH_URL")
+opensearch_index = os.getenv("OPENSEARCH_INDEX", "rag-interactions")
+opensearch_username = os.getenv("OPENSEARCH_USERNAME")
+opensearch_password = os.getenv("OPENSEARCH_PASSWORD")
 cache_url = os.getenv("CACHE_URL")
 context_builder_url = os.getenv("CONTEXT_BUILDER_URL")
 
 # Create orchestration service
 service = OrchestrationService(
     ollama_api_url=ollama_api_url,
-    elasticsearch_url=elasticsearch_url,
-    elasticsearch_index=elasticsearch_index,
+    opensearch_url=opensearch_url,
+    opensearch_index=opensearch_index,
+    opensearch_username=opensearch_username,
+    opensearch_password=opensearch_password,
     cache_url=cache_url,
     context_builder_url=context_builder_url,
 )
@@ -472,9 +501,9 @@ async def startup_event():
     """Start up event handler."""
     logger.info(f"Orchestration service starting, connected to Ollama API at {ollama_api_url}")
     
-    # Ensure Elasticsearch index exists
-    if service.es_client:
-        await service.ensure_elasticsearch_index()
+    # Ensure OpenSearch index exists
+    if service.os_client:
+        await service.ensure_opensearch_index()
 
 
 @app.on_event("shutdown")
@@ -503,15 +532,15 @@ async def health():
     except Exception:
         ollama_status = "unavailable"
     
-    # Get Elasticsearch health if configured
-    elasticsearch_status = "not_configured"
-    if service.es_client:
+    # Get OpenSearch health if configured
+    opensearch_status = "not_configured"
+    if service.os_client:
         try:
-            es_health = await service.es_client.cluster.health()
-            elasticsearch_status = es_health["status"]  # green, yellow, or red
+            os_health = await service.os_client.cluster.health()
+            opensearch_status = os_health["status"]  # green, yellow, or red
         except Exception as e:
-            elasticsearch_status = "unavailable"
-            logger.error(f"Elasticsearch health check failed: {e}")
+            opensearch_status = "unavailable"
+            logger.error(f"OpenSearch health check failed: {e}")
     
     # Get cache health if configured
     cache_status = "not_configured"
@@ -537,7 +566,7 @@ async def health():
     return {
         "status": "healthy",
         "ollama_api": ollama_status,
-        "elasticsearch": elasticsearch_status,
+        "opensearch": opensearch_status,
         "cache": cache_status,
         "context_builder": context_status,
         "statistics": stats,
