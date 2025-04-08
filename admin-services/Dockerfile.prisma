@@ -1,0 +1,24 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* .npmrc* ./
+
+# IMPORTANT: Copy the full prisma directory including schema.prisma file
+COPY prisma ./prisma/
+
+# Install dependencies including Prisma CLI
+RUN \
+  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
+  elif [ -f package-lock.json ]; then npm ci; \
+  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
+  else echo "Lockfile not found." && exit 1; \
+  fi
+
+# Verify the schema file exists (debugging step)
+RUN ls -la prisma/
+RUN cat prisma/schema.prisma
+
+# Run prisma migrations and then exit
+CMD npx prisma migrate deploy && echo "Database migrations completed successfully!"

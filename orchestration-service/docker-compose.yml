@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  orchestration-service:
+    build: .
+    ports:
+      - "9000:9000"
+    environment:
+      - OLLAMA_API_URL=http://ollama-api-server:8000
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_INDEX=rag-interactions
+      - CACHE_URL=http://redis:6379
+      - PORT=9000
+    restart: unless-stopped
+    networks:
+      - rag-network
+    depends_on:
+      - ollama-api-server
+      - elasticsearch
+      - redis
+      
+  ollama-api-server:
+    build: ../ollama-api-server
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_INSTANCES=http://host.docker.internal:11434
+      - LOAD_BALANCING_STRATEGY=least_connections
+    networks:
+      - rag-network
+
+
+              
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.4
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+      
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.4
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - XPACK_SECURITY_ENABLED=false
+    networks:
+      - rag-network
+    depends_on:
+      - elasticsearch
+      
+  redis:
+    image: redis:7
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - rag-network
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  elasticsearch_data:
+  redis_data:
