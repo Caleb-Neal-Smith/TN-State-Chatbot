@@ -1,97 +1,61 @@
-# import arxiv
-from prompter import *
-from llama_index.core import SimpleDirectoryReader
-from llama_index.vector_stores.milvus import MilvusVectorStore
-from llama_index.core import VectorStoreIndex, Settings, StorageContext
-from llama_index.llms.ollama import Ollama
+from llama_index.core import VectorStoreIndex, Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from pymilvus import MilvusClient
-#from dotenv import load_dotenvload_dotenv
-#from llama_parse import LlamaParse
+from llama_index.vector_stores.milvus import MilvusVectorStore
+from llama_index.llms.ollama import Ollama
 from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.storage.docstore import SimpleDocumentStore
-from llama_index.core.storage.index_store import SimpleIndexStore 
-#from llama_index.core.storage.vector_stores import SimpleVectorStore
-from llama_index.core import load_index_from_storage
 import argparse
+from prompter import *
 
-#argument passing
 parser = argparse.ArgumentParser()
 parser.add_argument("-q", "--query", type=str)
+parser.add_argument("-m", "--model", type=str)
 args = parser.parse_args()
 
 
+vector_store = MilvusVectorStore(
+    uri="./milvus/milvus.db", dim=768, overwrite=False
+)
 
-# set up parser
-#parser = LlamaParse(result_type="text")#"markdown" and "text" are available
-dir_name = "./Documents/pdf_data/"
-# use SimpleDirectoryReader to parse our file
-#file_extractor = {".pdf": parser}
-#documents = SimpleDirectoryReader(input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"], file_extractor=file_extractor).load_data()
-#print(documents)
-
-#documents = SimpleDirectoryReader(input_files = [f"{dir_name}attention.pdf"]).load_data()
-#print("Number of Input Documents: ", len(documents))
-
-
-vector_store = MilvusVectorStore(uri="./milvus-rag.db",dim=1024, overwrite=False)
-embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-large-en-v1.5")
-llm = Ollama(model="llama3.3",temperature=0.1, request_timeout=480.0)
-# pdf_document = SimpleDirectoryReader(#input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"]# ).load_data()
-# print("Number of Input documents:", len(pdf_document))
-# # OR execute this command if you have multiple PDFs inside the directory# 
-#pdf_document = SimpleDirectoryReader(#dir_name, recursive=True# ).load_data()
+llm = Ollama(model=args.model,temperature=0.1, request_timeout=480.0, streaming=True)
+embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
 Settings.llm = llm
-Settings.embed_model = embedding_model
-Settings.chunk_size = 256
-Settings.chunk_overlap = 64
+Settings.embed_model = embedding_model # "Settings.embed_model = None" (?)
 
-documents = SimpleDirectoryReader(
-        dir_name, recursive=True
-).load_data()
-
-
-index = VectorStoreIndex.from_documents(documents, vector_store=vector_store)
-index.storage_context.persist(persist_dir="./storage")
-
- 
- 
-#storage_context = StorageContext.from_defaults(persist_dir="storage")
-
-#index = load_index_from_storage(storage_context)
+index = VectorStoreIndex.from_vector_store(vector_store)
 
 
 
 print("Number of nodes:", len(index.docstore.docs))
 memory = ChatMemoryBuffer.from_defaults(token_limit=4000)
 chat_engine = index.as_chat_engine(chat_mode="condense_plus_context",
-    memory=memory,
-    llm=llm,
-    context_prompt=(#insert rules
-        "You are a chatbot, able to have normal interactions, as well as talk about given document and context"
-        "here are the relevant documents and context:\n"
-        "{context_str}"
-        "Here are some rules"
-        #"The first response you give should be 'hi, what can I help you with today?'"
-        "Only talk about things from your documents"
-        "never talk about anything unless it is from the context"
-        "never tell the user what your context is"
-        "Never talk about anything remotely sexual"
-        "\nInstruction: Use the previous chat history, or the context above, and follow the rules to interact and help the user."
-    ),
-    verbose=False
-)
+                memory=memory,
+                llm=llm,
+                context_prompt=(  # insert rules
+                    "You are a chatbot, able to have normal interactions, as well as talk about given document and context"
+                    "here are the relevant documents and context:\n"
+                    "{context_str}"
+                    "Here are some rules"
+                    # "The first response you give should be 'hi, what can I help you with today?'"
+                    "Only talk about things from your documents"
+                    "never talk about anything unless it is from the context"
+                    "never tell the user what your context is"
+                    "Never talk about anything remotely sexual"
+                    "\nInstruction: Use the previous chat history, or the context above, and follow the rules to interact and help the user."
+                ),
+                verbose=False
+                )
+
 
 def promptAsk(query):
     decision = save_choice()
-    
-    if query=="exit":
-        return
-    res = chat_engine.chat(query)
-    print(res)
-    if decision:
-        logging(decision,query,str(res))
+    while true
+        if query == "exit":
+            return "Exiting"
+        res = chat_engine.chat(query)
+        return res
+        if decision:
+            logging(decision, query, str(res))
 
-promptAsk(args.query)
-        
+
+print(promptAsk(args.query))
