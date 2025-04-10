@@ -1,14 +1,40 @@
 'use client';
 // components/_components/chat/ChatInterface.tsx
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useChat } from '@/hooks/useChat';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import LoadingIndicator from './LoadingIndicator';
 
 export default function ChatInterface() {
-  const { messages, isLoading, sendMessage, error } = useChat();
+  const { messages, isLoading, sendMessage, error, selectedModel, setSelectedModel } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+
+  const handleModelChange = (model: string) => {
+    console.log(`Model changed to: ${model}`);
+    setSelectedModel(model);
+  };
+
+  // Fetch available models on component mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const response = await fetch('/api/models');
+        if (!response.ok) {
+          throw new Error('Failed to fetch models');
+        }
+        const data = await response.json();
+        setAvailableModels(data.models || []);
+      } catch (error) {
+        console.error('Error fetching models:', error);
+        // Fallback to a default list if fetch fails
+        setAvailableModels(['llama3.2']);
+      }
+    };
+
+    fetchModels();
+  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -31,33 +57,39 @@ export default function ChatInterface() {
         ) : (
           <>
             {messages.map((message, index) => (
-              <ChatMessage 
-                key={index} 
-                role={message.role} 
-                content={message.content} 
+              <ChatMessage
+                key={index}
+                role={message.role}
+                content={message.content}
               />
             ))}
           </>
         )}
-        
+
         {isLoading && (
           <div className="py-2">
             <LoadingIndicator />
           </div>
         )}
-        
+
         {error && (
           <div className="p-3 bg-red-100 text-red-600 rounded-lg">
             Error: {error}
           </div>
         )}
-        
+
         <div ref={messagesEndRef} />
       </div>
-      
+
       {/* Chat input fixed at the bottom */}
       <div className="border-t p-4">
-        <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
+        <ChatInput
+          onSendMessage={sendMessage}
+          isLoading={isLoading}
+          availableModels={availableModels}
+          selectedModel={selectedModel}
+          onModelChange={handleModelChange} 
+        />
       </div>
     </div>
   );
