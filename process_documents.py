@@ -7,19 +7,11 @@ from pymilvus import MilvusClient
 
 dir_name = "./Documents/pdf_data/"
 
-# documents = SimpleDirectoryReader(
-#     input_files=[f"{dir_name}RFI 30901-57524 Project ARIS FINAL (3).pdf"]
-# ).load_data()
-# print("Number of Input documents:", len(documents))
 
 documents = SimpleDirectoryReader(
         dir_name, recursive=True
 ).load_data()
 
-# load documents
-# documents = SimpleDirectoryReader(
-#     input_files=["./Documents/pdf_data/paul_graham_essay.txt"]
-# ).load_data()
 
 print("Document ID:", documents[0].doc_id)
 

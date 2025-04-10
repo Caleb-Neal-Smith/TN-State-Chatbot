@@ -3,6 +3,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.milvus import MilvusVectorStore
 from llama_index.llms.ollama import Ollama
 from llama_index.core.memory import ChatMemoryBuffer
+from termcolor import colored
 import argparse
 
 parser = argparse.ArgumentParser()
