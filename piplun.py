@@ -4,10 +4,8 @@ from llama_index.vector_stores.milvus import MilvusVectorStore
 from llama_index.llms.ollama import Ollama
 from llama_index.core.memory import ChatMemoryBuffer
 import argparse
-from prompter import *
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-q", "--query", type=str)
 parser.add_argument("-m", "--model", type=str)
 args = parser.parse_args()
 
@@ -47,15 +45,17 @@ chat_engine = index.as_chat_engine(chat_mode="condense_plus_context",
                 )
 
 
-def promptAsk(query):
-    decision = save_choice()
-    while true
+def promptAsk():
+    
+    while True:
+        query = input(colored("Query: ", "green"))
         if query == "exit":
+            print(" ")
             return "Exiting"
+        print(" ")
         res = chat_engine.chat(query)
-        return res
-        if decision:
-            logging(decision, query, str(res))
+        print(" ")
+        print(res)
 
 
-print(promptAsk(args.query))
+print(promptAsk())
