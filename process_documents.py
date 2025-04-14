@@ -13,8 +13,8 @@ documents = SimpleDirectoryReader(
 print("Document ID:", documents[0].doc_id)
 
 vector_store = MilvusVectorStore(
-    uri="http://localhost:19530", dim=768, overwrite=True
-)
+    uri="http://149.165.151.119:19530", dim=768, overwrite=True
+) # 149.165.151.119
 
 embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
 llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0)
