@@ -24,7 +24,6 @@ services:
     networks:
       - rag-network
 
-  # PostgreSQL Database
   postgres:
     image: postgres:14-alpine
     restart: unless-stopped
@@ -44,7 +43,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Prisma Migration Service
   prisma-migrate:
     build:
       context: ./admin-services
@@ -57,16 +55,16 @@ services:
     networks:
       - rag-network
 
-
   orchestration-service:
     build: ./orchestration-service
     ports:
       - "9000:9000"
     environment:
-      - OLLAMA_API_URL=http://ollama-api-server:8000
+      - OLLAMA_API_URL=http://ollama-api-server:8100
       - OPENSEARCH_URL=http://opensearch:9200
       - OPENSEARCH_INDEX=rag-interactions
       - CACHE_URL=http://redis:6379
+      - CONTEXT_BUILDER_URL=http://context-provider:8002
       - PORT=9000
     restart: unless-stopped
     networks:
@@ -80,17 +78,53 @@ services:
   ollama-api-server:
     build: ./ollama-api-server
     ports:
-      - "8000:8000"
+      - "8100:8100"
     environment:
       - OLLAMA_INSTANCES=http://host.docker.internal:11434
       - LOAD_BALANCING_STRATEGY=least_connections
     networks:
       - rag-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
       interval: 10s
       timeout: 5s
       retries: 20
+
+  document-processor:
+    build: ./document-processor
+    ports:
+      - "8001:8001"
+    environment:
+      - CHROMA_DB_HOST=chromadb
+      - CHROMA_DB_PORT=8000
+      - OLLAMA_API_URL=http://host.docker.internal:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - COLLECTION_NAME=docs
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      chromadb:
+        condition: service_started
+
+  context-provider:
+    build: ./context-provider
+    ports:
+      - "8002:8002"
+    environment:
+      - CHROMA_DB_HOST=chromadb
+      - CHROMA_DB_PORT=8000
+      - CHROMA_COLLECTION=docs
+      - PORT=8002
+    restart: unless-stopped
+    networks:
+      - rag-network
+    depends_on:
+      - chromadb
 
   opensearch:
     image: opensearchproject/opensearch:2.10.0
@@ -147,6 +181,18 @@ services:
       timeout: 3s
       retries: 5
 
+  chromadb:
+    image: chromadb/chroma:latest
+    volumes:
+      - chroma_data:/data
+    ports:
+      - "8000:8000"
+    networks:
+      - rag-network
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_PORT=8000
+
 networks:
   rag-network:
     driver: bridge
@@ -156,4 +202,4 @@ volumes:
   document_storage:
   redis_data:
   opensearch_data:
-
+  chroma_data:
