@@ -280,15 +280,36 @@ async def insert_chunks_to_chroma(chunks: List[DocumentChunk], embeddings: List[
             logger.error(f"Metadata keys: {chunks[0].metadata.keys() if chunks[0].metadata else 'None'}")
         raise
 
+async def process_file_background(
+    file_path: str,
+    filename: str,
+    document_type: DocumentType,
+    metadata: Dict[str, Any],
+    document_id: str
+):
+    """Background task to process a file."""
+    try:
+        await process_document(file_path, filename, document_type, metadata, document_id)
+    except Exception as e:
+        logger.error(f"Background processing failed: {e}")
+    finally:
+        # Remove the temporary file
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Failed to remove temporary file: {e}")
+
 async def process_document(
     file_path: str,
     filename: str,
     document_type: DocumentType,
-    metadata: Dict[str, Any]
+    metadata: Dict[str, Any],
+    document_id: str
 ) -> ProcessedDocument:
     """Process a document: extract text, chunk it, generate embeddings, and store in ChromaDB."""
     try:
-        document_id = str(uuid.uuid4())
+        # Use the provided document_id instead of generating a new one
+        logger.info(f"Processing document with ID: {document_id}")
         
         # Extract text from document
         extracted_text = await extract_text(file_path, document_type)
@@ -305,11 +326,12 @@ async def process_document(
             # Create document chunk
             chunk = DocumentChunk(
                 chunk_id=chunk_id,
-                document_id=document_id,
+                document_id=document_id,  # Use the provided document ID
                 text=chunk_content,
                 metadata={
                     "chunk_index": i,
                     "filename": filename,
+                    "original_filename": metadata.get("original_filename", filename),
                     "document_type": document_type,
                     **metadata
                 }
@@ -318,11 +340,10 @@ async def process_document(
             document_chunks.append(chunk)
         
         # Insert chunks into ChromaDB
-        # ChromaDB will automatically generate embeddings using our custom embedding function
         await insert_chunks_to_chroma(document_chunks)
         
         return ProcessedDocument(
-            document_id=document_id,
+            document_id=document_id,  # Use the provided document ID
             filename=filename,
             document_type=document_type,
             chunk_count=len(document_chunks),
@@ -379,24 +400,6 @@ async def health():
             "error": str(e)
         }
 
-async def process_file_background(
-    file_path: str,
-    filename: str,
-    document_type: DocumentType,
-    metadata: Dict[str, Any]
-):
-    """Background task to process a file."""
-    try:
-        await process_document(file_path, filename, document_type, metadata)
-    except Exception as e:
-        logger.error(f"Background processing failed: {e}")
-    finally:
-        # Remove the temporary file
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            logger.error(f"Failed to remove temporary file: {e}")
-
 @app.post("/process", response_model=Dict[str, Any])
 async def process_file(
     background_tasks: BackgroundTasks,
@@ -411,6 +414,12 @@ async def process_file(
             metadata_dict = json.loads(metadata)
         except Exception:
             metadata_dict = {}
+        
+        # Get document ID from metadata or generate new one
+        document_id = metadata_dict.get("documentId")
+        if not document_id:
+            document_id = str(uuid.uuid4())
+            logger.warning(f"No document ID provided in metadata, generated new ID: {document_id}")
         
         # Detect document type using both filename and content type
         document_type = detect_document_type(file.filename, file.content_type)
@@ -439,11 +448,13 @@ async def process_file(
             temp_file.name,
             file.filename,
             document_type,
-            metadata_dict
+            metadata_dict,
+            document_id  # Pass the document ID to the background task
         )
         
         return {
             "status": "processing",
+            "document_id": document_id,
             "filename": file.filename,
             "document_type": document_type,
             "message": "File uploaded and processing started in the background"
@@ -451,7 +462,78 @@ async def process_file(
     except Exception as e:
         logger.error(f"Error processing file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
+    
+@app.delete("/documents/{document_id}")
+async def delete_document(document_id: str, filename: str = None):
+    """Delete a document and its associated vectors from ChromaDB."""
+    try:
+        logger.info(f"Received request to delete document with ID: {document_id}")
+        
+        # Get the ChromaDB client and collection
+        chroma_client = get_chroma_client()
+        collection = chroma_client.get_collection(name=COLLECTION_NAME)
+        
+        # Try different methods to find and delete document chunks
+        deleted_count = 0
+        
+        # Method 1: Try direct document_id field
+        query_result = collection.get(
+            where={"document_id": document_id}
+        )
+        
+        if query_result and 'ids' in query_result and query_result['ids']:
+            chunk_count = len(query_result['ids'])
+            logger.info(f"Found {chunk_count} chunks with document_id field")
+            
+            collection.delete(ids=query_result['ids'])
+            deleted_count += chunk_count
+        
+        # Method 2: Try documentId field (might be used in metadata)
+        query_result = collection.get(
+            where={"documentId": document_id}
+        )
+        
+        if query_result and 'ids' in query_result and query_result['ids']:
+            chunk_count = len(query_result['ids'])
+            logger.info(f"Found {chunk_count} chunks with documentId field")
+            
+            collection.delete(ids=query_result['ids'])
+            deleted_count += chunk_count
+        
+        # Method 3: Try by filename if provided
+        if filename and deleted_count == 0:
+            logger.info(f"Trying to delete by filename: {filename}")
+            query_result = collection.get(
+                where={"filename": filename}
+            )
+            
+            if query_result and 'ids' in query_result and query_result['ids']:
+                chunk_count = len(query_result['ids'])
+                logger.info(f"Found {chunk_count} chunks with filename: {filename}")
+                
+                collection.delete(ids=query_result['ids'])
+                deleted_count += chunk_count
+        
+        if deleted_count > 0:
+            return {
+                "status": "success",
+                "message": f"Document {document_id} and {deleted_count} associated chunks deleted successfully",
+                "deleted_chunks": deleted_count
+            }
+        else:
+            logger.warning(f"No chunks found for document {document_id}")
+            return {
+                "status": "warning",
+                "message": f"No chunks found for document {document_id}"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error deleting document {document_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete document: {str(e)}"
+        )
+   
 @app.get("/status")
 async def service_status():
     """Get service status and statistics."""
