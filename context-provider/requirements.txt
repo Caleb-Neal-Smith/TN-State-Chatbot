@@ -1,0 +1,9 @@
+asyncio
+uvicorn
+httpx
+fastapi
+pydantic
+chromadb-client
+python-multipart
+onnxruntime
+tokenizers
