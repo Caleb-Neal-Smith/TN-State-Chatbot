@@ -1,0 +1,12 @@
+asyncio
+uvicorn
+httpx
+fastapi
+pydantic
+chromadb-client
+pyMuPDF
+python-docx
+nltk
+python-multipart
+onnxruntime
+tokenizers
