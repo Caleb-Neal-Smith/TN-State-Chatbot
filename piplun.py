@@ -6,6 +6,80 @@ from llama_index.core.memory import ChatMemoryBuffer
 from termcolor import colored
 import argparse
 
+import httpx
+import uvicorn
+from opensearchpy import AsyncOpenSearch
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel, Field
+
+class QueryRequest(BaseModel):
+    query: str
+    model: str = "llama3"
+    stream: bool = False
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    options: Optional[Dict[str, Any]] = None
+
+class QueryResponse(BaseModel):
+    query_id: str
+    query: str
+    response: str
+    model: str
+    duration_ms: int
+    timestamp: int
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+app = FastAPI(
+    title="Piplun",
+    description="handles queries",
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.on_event("startup")
+async def startup_event():
+    """Start up event handler."""
+    logger.info(f"piplun starting")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown event handler."""
+    await service.close()
+
+
+@app.get("/")
+async def root():
+    """Root endpoint returning service info."""
+    return {
+        "service": "Piplun",
+        "version": "1.0.0",
+        "status": "running",
+    }
+
+
+@app.post("/query", response_model=QueryResponse)
+async def query(request: QueryRequest):
+    """Process a non-streaming query."""
+    if request.stream:
+        raise HTTPException(
+            status_code=400,
+            detail="For streaming requests, use the /query/stream endpoint"
+        )
+    
+    return await service.process_query(request)
+
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--model", type=str)
 args = parser.parse_args()
