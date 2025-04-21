@@ -5,7 +5,7 @@ from llama_index.llms.ollama import Ollama
 from llama_index.core.memory import ChatMemoryBuffer
 from termcolor import colored
 import argparse
-
+from session import save_session
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--model", type=str)
 args = parser.parse_args()
@@ -48,6 +48,7 @@ chat_engine = index.as_chat_engine(chat_mode="condense_plus_context",
 
 def promptAsk():
     
+    user_id = input("Enter your user id: ")
     while True:
         query = input(colored("Query: ", "green"))
         if query == "exit":
@@ -57,6 +58,7 @@ def promptAsk():
         res = chat_engine.chat(query)
         print(" ")
         print(res)
+        save_session(user_id, query, res)
 
 
 print(promptAsk())
