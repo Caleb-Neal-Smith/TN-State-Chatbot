@@ -1,0 +1,205 @@
+version: '3.8'
+
+services:
+  admin-ui:
+    build:
+      context: ./admin-services
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/rag_admin
+      - ORCHESTRATION_SERVICE_URL=http://orchestration-service:9000
+      - DOCUMENT_STORAGE_PATH=/app/storage/documents
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      - DASHBOARD_URL=http://kibana:5601/app/dashboards
+      - LOGS_URL=http://kibana:5601/app/discover
+    volumes:
+      - document_storage:/app/storage/documents
+    depends_on:
+      - postgres
+      - orchestration-service
+    networks:
+      - rag-network
+
+  postgres:
+    image: postgres:14-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rag_admin
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prisma-migrate:
+    build:
+      context: ./admin-services
+      dockerfile: Dockerfile.prisma
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/rag_admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rag-network
+
+  orchestration-service:
+    build: ./orchestration-service
+    ports:
+      - "9000:9000"
+    environment:
+      - OLLAMA_API_URL=http://ollama-api-server:8100
+      - OPENSEARCH_URL=http://opensearch:9200
+      - OPENSEARCH_INDEX=rag-interactions
+      - CACHE_URL=http://redis:6379
+      - CONTEXT_BUILDER_URL=http://context-provider:8002
+      - PORT=9000
+    restart: unless-stopped
+    networks:
+      - rag-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      
+  ollama-api-server:
+    build: ./ollama-api-server
+    ports:
+      - "8100:8100"
+    environment:
+      - OLLAMA_INSTANCES=http://host.docker.internal:11434
+      - LOAD_BALANCING_STRATEGY=least_connections
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  document-processor:
+    build: ./document-processor
+    ports:
+      - "8001:8001"
+    environment:
+      - CHROMA_DB_HOST=chromadb
+      - CHROMA_DB_PORT=8000
+      - OLLAMA_API_URL=http://host.docker.internal:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - COLLECTION_NAME=docs
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      chromadb:
+        condition: service_started
+
+  context-provider:
+    build: ./context-provider
+    ports:
+      - "8002:8002"
+    environment:
+      - CHROMA_DB_HOST=chromadb
+      - CHROMA_DB_PORT=8000
+      - CHROMA_COLLECTION=docs
+      - PORT=8002
+    restart: unless-stopped
+    networks:
+      - rag-network
+    depends_on:
+      - chromadb
+
+  opensearch:
+    image: opensearchproject/opensearch:2.10.0
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
+      - "DISABLE_SECURITY_PLUGIN=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600" # For performance analyzer
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+      
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.10.0
+    ports:
+      - "5601:5601"
+    environment:
+      - OPENSEARCH_HOSTS=http://opensearch:9200
+      - "DISABLE_SECURITY_DASHBOARDS_PLUGIN=true"
+    networks:
+      - rag-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      
+  redis:
+    image: redis:7
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  chromadb:
+    image: chromadb/chroma:latest
+    volumes:
+      - chroma_data:/data
+    ports:
+      - "8000:8000"
+    networks:
+      - rag-network
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_PORT=8000
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  document_storage:
+  redis_data:
+  opensearch_data:
+  chroma_data:
