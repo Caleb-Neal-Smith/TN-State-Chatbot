@@ -117,14 +117,53 @@ class DocumentService {
   /**
    * Delete a document
    */
-  async deleteDocument(id: string): Promise<void> {
+  async deleteDocument(documentId: string): Promise<boolean> {
     try {
-      await db.document.delete({
-        where: { id },
+      // Get the document first to get the filename
+      const document = await db.document.findUnique({
+        where: { id: documentId },
       });
+      
+      if (!document) {
+        console.error(`Document not found with ID: ${documentId}`);
+        return false;
+      }
+      
+      // Get the original filename
+      const filename = document.name;
+      
+      // Delete the document from the database
+      const dbResult = await db.document.delete({
+        where: { id: documentId },
+      });
+      
+      // Then delete the document's vectors from ChromaDB via the document processor
+      const documentProcessorUrl = process.env.DOCUMENT_PROCESSOR_URL || 'http://document-processor:8001';
+      const response = await fetch(`${documentProcessorUrl}/documents/${documentId}?filename=${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        console.error(`Error deleting document vectors: ${response.statusText}`);
+        // Log the response body for debugging
+        try {
+          const errorBody = await response.text();
+          console.error(`Error response body: ${errorBody}`);
+        } catch (e) {
+          console.error('Could not read error response body');
+        }
+        
+        // We've still deleted from the database, so consider it a partial success
+        return true;
+      }
+      
+      const result = await response.json();
+      console.log(`Document vectors deleted: ${JSON.stringify(result)}`);
+      
+      return true;
     } catch (error) {
-      console.error(`Error deleting document with ID ${id}:`, error);
-      throw new Error('Failed to delete document');
+      console.error(`Error deleting document: ${error}`);
+      return false;
     }
   }
   
