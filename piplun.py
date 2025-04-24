@@ -106,17 +106,17 @@ vector_store = MilvusVectorStore(
     uri="./milvus/milvus.db", dim=768, overwrite=False
 )
 
-llm = Ollama(model=QueryRequest.model,temperature=0.1, request_timeout=480.0, streaming=False)
-embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
-
-Settings.llm = llm
-Settings.embed_model = embedding_model # "Settings.embed_model = None" (?)
-
-index = VectorStoreIndex.from_vector_store(vector_store)
 
 
 
 def contextGrab(query, model):
+    llm = Ollama(model=QueryRequest.model,temperature=0.1, request_timeout=480.0, streaming=False)
+    embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
+
+    Settings.llm = llm
+    Settings.embed_model = embedding_model # "Settings.embed_model = None" (?)
+
+    index = VectorStoreIndex.from_vector_store(vector_store)
     memory = ChatMemoryBuffer.from_defaults(token_limit=4000)
     chat_engine = index.as_chat_engine(chat_mode="condense_plus_context",
                     memory=memory,
