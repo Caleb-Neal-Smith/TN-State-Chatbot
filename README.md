@@ -101,11 +101,13 @@ sequenceDiagram
 
 The simplest way to deploy the entire system is using Docker Compose:
 
-Pull the repository:
+Clone the repository:
 
 ```bash
-git pull https://github.com/Caleb-Neal-Smith/TN-State-Chatbot
+git clone https://github.com/Caleb-Neal-Smith/TN-State-Chatbot
 ```
+
+Bring the system online using docker compose:
 
 ```bash
 docker-compose up -d
