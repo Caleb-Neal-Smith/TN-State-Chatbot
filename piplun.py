@@ -21,6 +21,9 @@ import os
 import logging
 import asyncio
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("piplun")
+
 class QueryRequest(BaseModel):
     query: str
     model: str = "llama3.2"
@@ -85,19 +88,25 @@ async def query(request: QueryRequest):
             detail="For streaming requests, use the /query/stream endpoint"
         )
     start_time = time.time()
-    response = contextGrab(request.query, request.model)
     duration_ms = int((time.time() - start_time) * 1000)
-
+    
+    
     query_response = QueryResponse(
-        query_id=str(uuid.uuid4()),
-        query=request.query,
-        response=response,
-        model=request.model,
-        duration_ms=duration_ms,
-        timestamp=int(time.time()),
-        metadata=request.metadata or {}
+    query_id=str(uuid.uuid4()),
+    query=request.query,
+    response="",
+    model=request.model,
+    duration_ms=duration_ms,
+    timestamp=int(time.time()),
+    metadata=request.metadata or {}
     )
-    return query_response.json()
+    
+    
+    query_response.response = contextGrab(request.query, request.model)
+    
+
+
+    return query_response
     
 
 
@@ -110,7 +119,7 @@ vector_store = MilvusVectorStore(
 
 
 def contextGrab(query, model):
-    llm = Ollama(model=QueryRequest.model,temperature=0.1, request_timeout=480.0, streaming=False)
+    llm = Ollama(model=model,temperature=0.1, request_timeout=480.0, streaming=False)
     embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
     Settings.llm = llm
@@ -120,7 +129,7 @@ def contextGrab(query, model):
     memory = ChatMemoryBuffer.from_defaults(token_limit=4000)
     chat_engine = index.as_chat_engine(chat_mode="condense_plus_context",
                     memory=memory,
-                    llm=Ollama(model=model,temperature=0.1, request_timeout=480.0, streaming=True),
+                    llm=llm,
                     context_prompt=(  # insert rules
                         "You are a chatbot, able to have professional interactions, as well as talk about given documents and context"
                         "play your cards close to your vest. keep responses short and concise. If the user didnt ask about something, do not provide that info. if you need to provide info to answer a question thats ok"
