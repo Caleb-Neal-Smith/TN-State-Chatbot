@@ -5,6 +5,8 @@ from llama_index.llms.ollama import Ollama
 from llama_index.core.memory import ChatMemoryBuffer
 from termcolor import colored
 import argparse
+from typing import Optional, Dict, Any
+import pymilvus
 
 import httpx
 import uvicorn
@@ -17,6 +19,11 @@ import time
 import uuid
 import json
 import os
+import logging
+import asyncio
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class QueryRequest(BaseModel):
     query: str
@@ -60,7 +67,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler."""
-    await service.close()
+    logger.info(f"piplun shutting down")
 
 
 @app.get("/")
@@ -97,13 +104,11 @@ async def query(request: QueryRequest):
     return query_response.json()
     
 
-parser = argparse.ArgumentParser()
-parser.add_argument("-m", "--model", type=str)
-args = parser.parse_args()
+
 
 
 vector_store = MilvusVectorStore(
-    uri="./milvus/milvus.db", dim=768, overwrite=False
+    uri="milvus.db", dim=768, overwrite=True
 )
 
 llm = Ollama(model=args.model,temperature=0.1, request_timeout=480.0, streaming=True)
@@ -137,20 +142,7 @@ def contextGrab(query, model):
                     )
     return chat_engine.chat(query)
 
-def promptAsk():
-    
-    while True:
-        query = input(colored("Query: ", "green"))
-        if query == "exit":
-            print(" ")
-            return "Exiting"
-        print(" ")
-        res = chat_engine.chat(query)
-        print(" ")
-        print(res)
 
-
-print(promptAsk())
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
