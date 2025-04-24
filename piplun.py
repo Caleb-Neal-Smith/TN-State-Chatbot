@@ -4,7 +4,6 @@ from llama_index.vector_stores.milvus import MilvusVectorStore
 from llama_index.llms.ollama import Ollama
 from llama_index.core.memory import ChatMemoryBuffer
 from termcolor import colored
-import argparse
 from typing import Optional, Dict, Any
 import pymilvus
 
@@ -21,9 +20,6 @@ import json
 import os
 import logging
 import asyncio
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 class QueryRequest(BaseModel):
     query: str
@@ -67,7 +63,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler."""
-    logger.info(f"piplun shutting down")
+    await service.close()
 
 
 @app.get("/")
@@ -106,12 +102,11 @@ async def query(request: QueryRequest):
 
 
 
-
 vector_store = MilvusVectorStore(
-    uri="milvus.db", dim=768, overwrite=True
+    uri="./milvus/milvus.db", dim=768, overwrite=False
 )
 
-llm = Ollama(model=args.model,temperature=0.1, request_timeout=480.0, streaming=True)
+llm = Ollama(model=QueryRequest.model,temperature=0.1, request_timeout=480.0, streaming=False)
 embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
 
 Settings.llm = llm
@@ -141,6 +136,9 @@ def contextGrab(query, model):
                     verbose=False
                     )
     return chat_engine.chat(query)
+
+
+
 
 
 
