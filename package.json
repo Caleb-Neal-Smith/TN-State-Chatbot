@@ -1,0 +1,19 @@
+{
+    "name": "faq-opensearch-module",
+    "version": "1.0.0",
+    "main": "dist/index.js",
+    "scripts": {
+      "build": "tsc",
+      "start": "ts-node index.ts",
+      "handler": "ts-node handler.ts"
+    },
+    "dependencies": {
+      "@opensearch-project/opensearch": "^2.0.0",
+      "dotenv": "^16.0.0"
+    },
+    "devDependencies": {
+      "typescript": "^5.0.0",
+      "ts-node": "^10.0.0",
+      "@types/node": "^18.0.0"
+    }
+  }
