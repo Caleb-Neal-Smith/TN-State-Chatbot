@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Any, Union
 import httpx
 import uvicorn
 from opensearchpy import AsyncOpenSearch
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -41,6 +41,38 @@ class QueryResponse(BaseModel):
     duration_ms: int
     timestamp: int
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LogSearchRequest(BaseModel):
+    query: Optional[str] = None
+    model: Optional[str] = None
+    from_timestamp: Optional[int] = None
+    to_timestamp: Optional[int] = None
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    page: int = 1
+    limit: int = 20
+    sort_field: str = "timestamp"
+    sort_order: str = "desc"
+
+
+class LogEntry(BaseModel):
+    query_id: str
+    query: str
+    response: str
+    model: str
+    latency_ms: int
+    timestamp: int
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LogsResponse(BaseModel):
+    logs: List[LogEntry]
+    total: int
+    page: int
+    limit: int
 
 
 class OrchestrationService:
@@ -144,7 +176,7 @@ class OrchestrationService:
         session_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
-    # """Log an interaction to OpenSearch."""
+        """Log an interaction to OpenSearch."""
         if not self.os_client:
             logger.warning("OpenSearch client not initialized, skipping logging")
             return False
@@ -182,7 +214,7 @@ class OrchestrationService:
             return False
     
     async def ensure_opensearch_index(self) -> bool:
-    #Ensure the OpenSearch index exists with proper mapping.
+        """Ensure the OpenSearch index exists with proper mapping."""
         if not self.os_client:
             logger.warning("OpenSearch client not initialized, cannot ensure index")
             return False
@@ -341,6 +373,7 @@ class OrchestrationService:
                 detail=f"Error processing query: {str(e)}"
             )
 
+<<<<<<< Updated upstream
     async def process_streaming_query(self, request: QueryRequest):
         """Process a streaming user query."""
         try:
@@ -439,6 +472,148 @@ class OrchestrationService:
             raise HTTPException(
                 status_code=500,
                 detail=f"Error setting up streaming: {str(e)}"
+=======
+    async def get_logs(
+    self,
+        page: int = 1,
+        limit: int = 20,
+        search_query: Optional[str] = None,
+        model: Optional[str] = None,
+        from_timestamp: Optional[int] = None,
+        to_timestamp: Optional[int] = None,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        sort_field: str = "@timestamp",  # Changed default from "timestamp" to "@timestamp"
+        sort_order: str = "desc"
+    ) -> Dict[str, Any]:
+        """Get logs from OpenSearch with pagination and filters."""
+        if not self.os_client:
+            logger.warning("OpenSearch client not initialized, cannot get logs")
+            raise HTTPException(
+                status_code=500,
+                detail="OpenSearch client not initialized"
+            )
+            
+        try:
+            # Calculate offset for pagination
+            offset = (page - 1) * limit
+            
+            # Build query
+            must_conditions = []
+            
+            # Add search query if provided
+            if search_query:
+                must_conditions.append({
+                    "multi_match": {
+                        "query": search_query,
+                        "fields": ["query", "response"]
+                    }
+                })
+            
+            # Add model filter if provided
+            if model:
+                must_conditions.append({
+                    "term": {
+                        "model": model
+                    }
+                })
+            
+            # Add user ID filter if provided
+            if user_id:
+                must_conditions.append({
+                    "term": {
+                        "user_id": user_id
+                    }
+                })
+            
+            # Add session ID filter if provided
+            if session_id:
+                must_conditions.append({
+                    "term": {
+                        "session_id": session_id
+                    }
+                })
+            
+            # Add timestamp range if provided
+            if from_timestamp or to_timestamp:
+                # Use @timestamp field instead of timestamp
+                range_query = {"range": {"@timestamp": {}}}
+                
+                if from_timestamp:
+                    # Convert to milliseconds for OpenSearch
+                    range_query["range"]["@timestamp"]["gte"] = from_timestamp * 1000
+                
+                if to_timestamp:
+                    # Convert to milliseconds for OpenSearch
+                    range_query["range"]["@timestamp"]["lte"] = to_timestamp * 1000
+                
+                must_conditions.append(range_query)
+            
+            # Build the final query
+            query = {
+                "bool": {
+                    "must": must_conditions if must_conditions else [{"match_all": {}}]
+                }
+            }
+            
+            # Adjust sort field if it's "timestamp" to use "@timestamp" instead
+            if sort_field == "timestamp":
+                sort_field = "@timestamp"
+                
+            # Execute the search
+            response = await self.os_client.search(
+                index=self.opensearch_index,
+                body={
+                    "query": query,
+                    "sort": [
+                        {sort_field: {"order": sort_order}}
+                    ],
+                    "from": offset,
+                    "size": limit
+                }
+            )
+            
+            # Parse results
+            hits = response.get("hits", {})
+            total = hits.get("total", {}).get("value", 0)
+            logs = []
+            
+            # Process each hit
+            for hit in hits.get("hits", []):
+                source = hit.get("_source", {})
+                
+                # Get timestamp from @timestamp field (OpenSearch format)
+                timestamp = source.get("@timestamp")
+                if timestamp and timestamp > 1600000000000:  # Assuming it's in milliseconds if very large
+                    timestamp = int(timestamp / 1000)
+                
+                log_entry = {
+                    "query_id": source.get("query_id", hit.get("_id", "")),
+                    "query": source.get("query", ""),
+                    "response": source.get("response", ""),
+                    "model": source.get("model", ""),
+                    "latency_ms": source.get("latency_ms", 0),
+                    "timestamp": timestamp,
+                    "user_id": source.get("user_id"),
+                    "session_id": source.get("session_id"),
+                    "metadata": source.get("metadata", {})
+                }
+                
+                logs.append(log_entry)
+            
+            return {
+                "logs": logs,
+                "total": total,
+                "page": page,
+                "limit": limit
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting logs: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error getting logs: {str(e)}"
+>>>>>>> Stashed changes
             )
 
     def get_statistics(self) -> Dict[str, Any]:
@@ -597,6 +772,73 @@ async def query_stream(request: QueryRequest):
     # Force streaming for this endpoint
     request.stream = True
     return await service.process_streaming_query(request)
+
+
+@app.get("/logs", response_model=LogsResponse)
+async def get_logs(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    q: Optional[str] = None,
+    model: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    sort_field: str = "timestamp",
+    sort_order: str = "desc"
+):
+    """Get logs with pagination and filters."""
+    # Convert date strings to timestamps if provided
+    from_timestamp = None
+    to_timestamp = None
+    
+    if from_date:
+        try:
+            from_timestamp = int(time.mktime(time.strptime(from_date, "%Y-%m-%dT%H:%M:%S")))
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid from_date format. Expected format: YYYY-MM-DDTHH:MM:SS"
+            )
+    
+    if to_date:
+        try:
+            to_timestamp = int(time.mktime(time.strptime(to_date, "%Y-%m-%dT%H:%M:%S")))
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid to_date format. Expected format: YYYY-MM-DDTHH:MM:SS"
+            )
+    
+    return await service.get_logs(
+        page=page,
+        limit=limit,
+        search_query=q,
+        model=model,
+        from_timestamp=from_timestamp,
+        to_timestamp=to_timestamp,
+        user_id=user_id,
+        session_id=session_id,
+        sort_field=sort_field,
+        sort_order=sort_order
+    )
+
+
+@app.post("/logs/search", response_model=LogsResponse)
+async def search_logs(request: LogSearchRequest):
+    """Advanced search for logs."""
+    return await service.get_logs(
+        page=request.page,
+        limit=request.limit,
+        search_query=request.query,
+        model=request.model,
+        from_timestamp=request.from_timestamp,
+        to_timestamp=request.to_timestamp,
+        user_id=request.user_id,
+        session_id=request.session_id,
+        sort_field=request.sort_field,
+        sort_order=request.sort_order
+    )
 
 
 @app.get("/models")
