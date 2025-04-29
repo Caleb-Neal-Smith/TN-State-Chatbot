@@ -33,6 +33,7 @@ class GenerationRequest(BaseModel):
     model: str
     prompt: str
     stream: bool = False
+    images: Optional[List[str]] = None
     options: Optional[Dict[str, Any]] = None
     system: Optional[str] = None
     template: Optional[str] = None
