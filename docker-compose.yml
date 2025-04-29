@@ -63,7 +63,11 @@ services:
     ports:
       - "9000:9000"
     environment:
+<<<<<<< Updated upstream
       - OLLAMA_API_URL=http://ollama-api-server:8000
+=======
+      - OLLAMA_API_URL=http://localhost:1234
+>>>>>>> Stashed changes
       - OPENSEARCH_URL=http://opensearch:9200
       - OPENSEARCH_INDEX=rag-interactions
       - CACHE_URL=http://redis:6379
@@ -82,7 +86,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - OLLAMA_INSTANCES=http://host.docker.internal:11434
+      - OLLAMA_INSTANCES=http://localhost:1234
       - LOAD_BALANCING_STRATEGY=least_connections
     networks:
       - rag-network
@@ -92,6 +96,45 @@ services:
       timeout: 5s
       retries: 20
 
+<<<<<<< Updated upstream
+=======
+  document-processor:
+    build: ./document-processor
+    ports:
+      - "8001:8001"
+    environment:
+      - CHROMA_DB_HOST=chromadb
+      - CHROMA_DB_PORT=8000
+      - OLLAMA_API_URL=http://localhost:1234
+      - EMBEDDING_MODEL=nomic-embed-text
+      - COLLECTION_NAME=docs
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      chromadb:
+        condition: service_started
+
+  context-provider:
+    build: ./context-provider
+    ports:
+      - "8002:8002"
+    environment:
+      - CHROMA_DB_HOST=chromadb
+      - CHROMA_DB_PORT=8000
+      - CHROMA_COLLECTION=docs
+      - PORT=8002
+    restart: unless-stopped
+    networks:
+      - rag-network
+    depends_on:
+      - chromadb
+
+>>>>>>> Stashed changes
   opensearch:
     image: opensearchproject/opensearch:2.10.0
     environment:
