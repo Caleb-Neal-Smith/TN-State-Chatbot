@@ -230,11 +230,11 @@ class OrchestrationService:
             logger.error(f"Failed to ensure OpenSearch index: {e}", exc_info=True)
             return False
 
-    async def get_context(self, query: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def get_context(self, query: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Get context for a query from the context builder service."""
         if not self.context_builder_url:
             logger.warning("Context builder URL not configured, returning empty context")
-            return ""
+            return {"context": "", "metadata": {}, "chunks": []}
             
         try:
             # Prepare request for the context builder
@@ -252,15 +252,14 @@ class OrchestrationService:
             
             if not response.is_success:
                 logger.error(f"Context builder error: {response.text}")
-                return ""
+                return {"context": "", "metadata": {}, "chunks": []}
             
-            # Parse response
-            response_data = response.json()
-            return response_data.get("context", "")
+            # Parse response - return the entire JSON response, not just the context field
+            return response.json()
             
         except Exception as e:
             logger.warning(f"Error getting context: {e}")
-            return ""
+            return {"context": "", "metadata": {}, "chunks": []}
 
     async def process_query(self, request: QueryRequest) -> Dict[str, Any]:
         """Process a user query (non-streaming)."""
@@ -273,15 +272,27 @@ class OrchestrationService:
             query_id = str(uuid.uuid4())
             
             # Get context for the query
-            context = await self.get_context(request.query, request.metadata)
+            context_data = await self.get_context(request.query, request.metadata)
             
-            print(context)
-
+            # Extract text context
+            context_text = context_data.get("context", "")
+            
+            # Extract base64 images from chunks
+            base64_images = []
+            logger.info(f"Processing {len(context_data.get('chunks', []))} chunks from context provider")
+            for chunk in context_data.get("chunks", []):
+                if chunk.get("base64"):
+                    # Get the base64 data and ensure it's properly formatted for Ollama
+                    base64_data = chunk["base64"]
+                    # If data has a prefix like "data:image/png;base64,", strip it
+                    if isinstance(base64_data, str) and base64_data.startswith("data:"):
+                        base64_data = base64_data.split(",", 1)[1]
+                    base64_images.append(base64_data)
+            
+            logger.info(f"Found {len(base64_images)} base64 images to send to Ollama")
+            
             # Create a prompt with the context
-            prompt = f"""Answer the following question based on the provided context:
-
-    Context:
-    {context}
+            prompt = f"""Answer the following question based on the provided images:
 
     Question: {request.query}
 
@@ -290,15 +301,29 @@ class OrchestrationService:
             # Prepare request for the Ollama API
             ollama_request = {
                 "model": request.model,
-                "prompt": prompt,  # Now includes context
+                "prompt": prompt,
                 "stream": False,
                 "options": request.options or {}
             }
             
+            # Add images to the request if available
+            if base64_images:
+                ollama_request["images"] = base64_images
+                logger.info(f"Added {len(base64_images)} images to Ollama request")
+            else:
+                logger.warning("No images found for multi-modal context!")
+            
+            # Log the API request format (without the actual image data for brevity)
+            log_request = {**ollama_request}
+            if "images" in log_request:
+                log_request["images"] = f"[{len(log_request['images'])} base64 images]"
+            logger.info(f"Sending request to Ollama: {json.dumps(log_request)}")
+            
             # Send request to Ollama API
             response = await self.client.post(
                 f"{self.ollama_api_url}/api/generate",
-                json=ollama_request
+                json=ollama_request,
+                timeout=120.0  # Increase timeout for image processing
             )
             
             if not response.is_success:
@@ -340,9 +365,6 @@ class OrchestrationService:
                 metadata=request.metadata
             )
             
-            # Store in cache
-            await self.store_in_cache(request.query, result)
-            
             return result
             
         except HTTPException:
@@ -354,6 +376,7 @@ class OrchestrationService:
                 status_code=500,
                 detail=f"Error processing query: {str(e)}"
             )
+                
 
     def get_statistics(self) -> Dict[str, Any]:
         """Get service statistics."""
