@@ -80,7 +80,7 @@ services:
     ports:
       - "8100:8100"
     environment:
-      - OLLAMA_INSTANCES=http://host.docker.internal:11434
+      - OLLAMA_INSTANCES=http://ollama:11434
       - LOAD_BALANCING_STRATEGY=least_connections
     networks:
       - rag-network
@@ -95,11 +95,15 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - CHROMA_DB_HOST=chromadb
-      - CHROMA_DB_PORT=8000
-      - OLLAMA_API_URL=http://host.docker.internal:11434
-      - EMBEDDING_MODEL=nomic-embed-text
-      - COLLECTION_NAME=docs
+      - DOCUMENT_STORAGE_PATH=/app/storage/documents
+      - BYALDI_INDEX_ROOT=/app/byaldi_indexes
+      - BYALDI_MODEL=vidore/colqwen2-v1.0
+      - BYALDI_INDEX_NAME=rag_documents
+      - OLLAMA_API_URL=http://ollama:11434
+      - USE_GPU=true
+    volumes:
+      - document_storage:/app/storage/documents
+      - byaldi_indexes:/app/byaldi_indexes
     networks:
       - rag-network
     healthcheck:
@@ -107,24 +111,39 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
-    depends_on:
-      chromadb:
-        condition: service_started
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   context-provider:
     build: ./context-provider
     ports:
       - "8002:8002"
     environment:
-      - CHROMA_DB_HOST=chromadb
-      - CHROMA_DB_PORT=8000
-      - CHROMA_COLLECTION=docs
-      - PORT=8002
+      - DOCUMENT_STORAGE_PATH=/app/storage/documents
+      - BYALDI_INDEX_ROOT=/app/byaldi_indexes
+      - BYALDI_MODEL=vidore/colqwen2-v1.0
+      - BYALDI_INDEX_NAME=rag_documents
+      - USE_GPU=true
+    volumes:
+      - document_storage:/app/storage/documents
+      - byaldi_indexes:/app/byaldi_indexes
     restart: unless-stopped
     networks:
       - rag-network
     depends_on:
-      - chromadb
+      - document-processor
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   opensearch:
     image: opensearchproject/opensearch:2.10.0
@@ -166,6 +185,28 @@ services:
     depends_on:
       opensearch:
         condition: service_healthy
+
+  ollama:
+    volumes:
+      - ./ollama/ollama:/root/.ollama
+    container_name: ollama
+    pull_policy: always
+    tty: true
+    restart: unless-stopped
+    image: docker.io/ollama/ollama:latest
+    ports:
+      - 11434:11434
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    networks:
+      - rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all 
+              capabilities: [gpu]
       
   redis:
     image: redis:7
@@ -203,3 +244,4 @@ volumes:
   redis_data:
   opensearch_data:
   chroma_data:
+  byaldi_indexes:
