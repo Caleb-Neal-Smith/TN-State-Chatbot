@@ -16,6 +16,10 @@ services:
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
       - DASHBOARD_URL=http://kibana:5601/app/dashboards
       - LOGS_URL=http://kibana:5601/app/discover
+      - OPENSEARCH_URL=http://opensearch:9200
+      - OPENSEARCH_INDEX=rag-interactions
+      - OPENSEARCH_USERNAME=
+      - OPENSEARCH_PASSWORD=
     volumes:
       - document_storage:/app/storage/documents
     depends_on:
