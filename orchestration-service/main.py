@@ -51,7 +51,6 @@ class OrchestrationService:
         opensearch_index: str = "rag-interactions",
         opensearch_username: Optional[str] = None,
         opensearch_password: Optional[str] = None,
-        cache_url: Optional[str] = None,
         context_builder_url: Optional[str] = None,
     ):
         self.ollama_api_url = ollama_api_url
@@ -59,7 +58,6 @@ class OrchestrationService:
         self.opensearch_index = opensearch_index
         self.opensearch_username = opensearch_username
         self.opensearch_password = opensearch_password
-        self.cache_url = cache_url
         self.context_builder_url = context_builder_url
         self.client = httpx.AsyncClient(timeout=120.0)
         
@@ -91,48 +89,7 @@ class OrchestrationService:
         if self.os_client:
             await self.os_client.close()
 
-    async def check_cache(self, query: str) -> Optional[Dict[str, Any]]:
-        """Check if a response for the given query exists in the cache."""
-        if not self.cache_url:
-            return None
-            
-        try:
-            # Cache key should consider relevant factors that determine the response
-            cache_key = hash(query)
-            response = await self.client.get(
-                f"{self.cache_url}/get", 
-                params={"key": cache_key}
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            
-            return None
-        except Exception as e:
-            logger.warning(f"Cache check failed: {e}")
-            return None
 
-    async def store_in_cache(self, query: str, response_data: Dict[str, Any]) -> bool:
-        """Store a query/response pair in the cache."""
-        if not self.cache_url:
-            return False
-            
-        try:
-            # Cache key should consider relevant factors that determine the response
-            cache_key = hash(query)
-            response = await self.client.post(
-                f"{self.cache_url}/set", 
-                json={
-                    "key": cache_key,
-                    "value": response_data,
-                    "ttl": 3600  # 1 hour TTL by default
-                }
-            )
-            
-            return response.status_code == 200
-        except Exception as e:
-            logger.warning(f"Cache store failed: {e}")
-            return False
 
     async def log_interaction(
         self, 
@@ -230,6 +187,37 @@ class OrchestrationService:
             logger.error(f"Failed to ensure OpenSearch index: {e}", exc_info=True)
             return False
 
+    async def get_context(self, query: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Get context for a query from the context builder service."""
+        if not self.context_builder_url:
+            logger.warning("Context builder URL not configured, returning empty context")
+            return {"context": "", "metadata": {}, "chunks": []}
+            
+        try:
+            # Prepare request for the context builder
+            request_data = {
+                "query": query,
+                "max_chunks": 5,  # Configure as needed
+                "metadata_filter": metadata.get("filter") if metadata else None
+            }
+            
+            # Send request to context builder
+            response = await self.client.post(
+                f"{self.context_builder_url}/get_context",
+                json=request_data
+            )
+            
+            if not response.is_success:
+                logger.error(f"Context builder error: {response.text}")
+                return {"context": "", "metadata": {}, "chunks": []}
+            
+            # Parse response - return the entire JSON response, not just the context field
+            return response.json()
+            
+        except Exception as e:
+            logger.warning(f"Error getting context: {e}")
+            return {"context": "", "metadata": {}, "chunks": []}
+
     async def process_query(self, request: QueryRequest) -> Dict[str, Any]:
         """Process a user query (non-streaming)."""
         try:
@@ -240,51 +228,59 @@ class OrchestrationService:
             # Generate a unique query ID
             query_id = str(uuid.uuid4())
             
-            # Check cache first if available
-            cached_response = await self.check_cache(request.query)
-            if cached_response:
-                logger.info(f"Cache hit for query: {request.query[:50]}...")
-                self.successful_requests += 1
-                
-                # Still log this interaction as a cache hit
-                await self.log_interaction(
-                    query=request.query,
-                    response=cached_response["response"],
-                    model=request.model,
-                    latency_ms=int((time.time() - start_time) * 1000),
-                    user_id=request.user_id,
-                    session_id=request.session_id,
-                    metadata={
-                        **(request.metadata or {}),
-                        "cache_hit": True
-                    }
-                )
-                
-                return {
-                    "query_id": query_id,
-                    "query": request.query,
-                    "response": cached_response["response"],
-                    "model": request.model,
-                    "duration_ms": int((time.time() - start_time) * 1000),
-                    "timestamp": int(time.time()),
-                    "metadata": {
-                        "cache_hit": True,
-                        **(request.metadata or {})
-                    }
-                }
+            # Get context for the query
+            context_data = await self.get_context(request.query, request.metadata)
+            
+            # Extract text context
+            context_text = context_data.get("context", "")
+            
+            # Extract base64 images from chunks
+            base64_images = []
+            logger.info(f"Processing {len(context_data.get('chunks', []))} chunks from context provider")
+            for chunk in context_data.get("chunks", []):
+                if chunk.get("base64"):
+                    # Get the base64 data and ensure it's properly formatted for Ollama
+                    base64_data = chunk["base64"]
+                    # If data has a prefix like "data:image/png;base64,", strip it
+                    if isinstance(base64_data, str) and base64_data.startswith("data:"):
+                        base64_data = base64_data.split(",", 1)[1]
+                    base64_images.append(base64_data)
+            
+            logger.info(f"Found {len(base64_images)} base64 images to send to Ollama")
+            
+            # Create a prompt with the context
+            prompt = f"""Answer the following question based on the provided image. Please just provide the answer without any additional information. If the image is not relevant, or there is no image, to the question, please say "I don't know".
+
+    Question: {request.query}
+
+    Answer:"""
             
             # Prepare request for the Ollama API
             ollama_request = {
                 "model": request.model,
-                "prompt": request.query,
+                "prompt": prompt,
                 "stream": False,
                 "options": request.options or {}
             }
             
+            # Add images to the request if available
+            if base64_images:
+                ollama_request["images"] = base64_images
+                logger.info(f"Added {len(base64_images)} images to Ollama request")
+            else:
+                logger.warning("No images found for multi-modal context!")
+            
+            # Log the API request format (without the actual image data for brevity)
+            log_request = {**ollama_request}
+            if "images" in log_request:
+                log_request["images"] = f"[{len(log_request['images'])} base64 images]"
+            logger.info(f"Sending request to Ollama: {json.dumps(log_request)}")
+            
             # Send request to Ollama API
             response = await self.client.post(
                 f"{self.ollama_api_url}/api/generate",
-                json=ollama_request
+                json=ollama_request,
+                timeout=120.0  # Increase timeout for image processing
             )
             
             if not response.is_success:
@@ -326,9 +322,6 @@ class OrchestrationService:
                 metadata=request.metadata
             )
             
-            # Store in cache
-            await self.store_in_cache(request.query, result)
-            
             return result
             
         except HTTPException:
@@ -340,106 +333,7 @@ class OrchestrationService:
                 status_code=500,
                 detail=f"Error processing query: {str(e)}"
             )
-
-    async def process_streaming_query(self, request: QueryRequest):
-        """Process a streaming user query."""
-        try:
-            # Track statistics
-            self.total_requests += 1
-            start_time = time.time()
-            
-            # Generate a unique query ID
-            query_id = str(uuid.uuid4())
-            
-            # Prepare request for the Ollama API
-            ollama_request = {
-                "model": request.model,
-                "prompt": request.query,
-                "stream": True,
-                "options": request.options or {}
-            }
-            
-            # For collecting the complete response for logging
-            complete_response = []
-            
-            async def process_stream():
-                try:
-                    async with self.client.stream(
-                        "POST",
-                        f"{self.ollama_api_url}/api/generate/stream",
-                        json=ollama_request,
-                        timeout=300.0
-                    ) as response:
-                        if not response.is_success:
-                            error_text = await response.aread()
-                            self.failed_requests += 1
-                            raise HTTPException(
-                                status_code=response.status_code,
-                                detail=error_text.decode()
-                            )
-                        
-                        async for chunk in response.aiter_text():
-                            # Parse the chunk and collect response for logging
-                            try:
-                                data = json.loads(chunk)
-                                if "response" in data:
-                                    text = data.get("response", "")
-                                    complete_response.append(text)
-                            except:
-                                pass
-                            
-                            # Stream the chunk to the client
-                            yield chunk
-                    
-                    # Log the interaction once streaming completes
-                    latency_ms = int((time.time() - start_time) * 1000)
-                    self.total_latency += latency_ms
-                    self.successful_requests += 1
-                    
-                    full_response = "".join(complete_response)
-                    
-                    await self.log_interaction(
-                        query=request.query,
-                        response=full_response,
-                        model=request.model,
-                        latency_ms=latency_ms,
-                        user_id=request.user_id,
-                        session_id=request.session_id,
-                        metadata=request.metadata
-                    )
-                    
-                    # Also store in cache for future non-streaming requests
-                    result = {
-                        "query_id": query_id,
-                        "query": request.query,
-                        "response": full_response,
-                        "model": request.model,
-                        "duration_ms": latency_ms,
-                        "timestamp": int(time.time()),
-                        "metadata": request.metadata or {}
-                    }
-                    await self.store_in_cache(request.query, result)
-                    
-                except HTTPException:
-                    raise
-                except Exception as e:
-                    logger.exception(f"Stream processing error: {e}")
-                    self.failed_requests += 1
-                    # We need to yield an error in SSE format
-                    yield json.dumps({"error": str(e)})
-            
-            return StreamingResponse(
-                process_stream(),
-                media_type="text/event-stream"
-            )
-            
-        except Exception as e:
-            logger.exception(f"Error setting up streaming: {e}")
-            self.failed_requests += 1
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error setting up streaming: {str(e)}"
-            )
+                
 
     def get_statistics(self) -> Dict[str, Any]:
         """Get service statistics."""
@@ -481,7 +375,6 @@ opensearch_url = os.getenv("OPENSEARCH_URL")
 opensearch_index = os.getenv("OPENSEARCH_INDEX", "rag-interactions")
 opensearch_username = os.getenv("OPENSEARCH_USERNAME")
 opensearch_password = os.getenv("OPENSEARCH_PASSWORD")
-cache_url = os.getenv("CACHE_URL")
 context_builder_url = os.getenv("CONTEXT_BUILDER_URL")
 
 # Create orchestration service
@@ -491,7 +384,6 @@ service = OrchestrationService(
     opensearch_index=opensearch_index,
     opensearch_username=opensearch_username,
     opensearch_password=opensearch_password,
-    cache_url=cache_url,
     context_builder_url=context_builder_url,
 )
 
@@ -544,12 +436,6 @@ async def health():
     
     # Get cache health if configured
     cache_status = "not_configured"
-    if cache_url:
-        try:
-            cache_health = await service.client.get(f"{cache_url}/health")
-            cache_status = "healthy" if cache_health.is_success else "unhealthy"
-        except Exception:
-            cache_status = "unavailable"
     
     # Get context builder health if configured
     context_status = "not_configured"

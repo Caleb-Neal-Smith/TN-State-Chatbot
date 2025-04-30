@@ -10,7 +10,7 @@ export const config = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, model = 'llama3.2', stream = true, options = {} } = await req.json();
+    const { message, model = 'gemma3:4b-it-qat', stream = true, options = {} } = await req.json();
     
     if (!message) {
       return NextResponse.json(

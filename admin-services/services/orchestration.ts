@@ -66,7 +66,7 @@ export function getOrchestrationServiceUrl(): string {
 // Function to get the Ollama API URL
 export function getOllamaApiUrl(): string {
   // In Docker, should reference the service name
-  const url = process.env.OLLAMA_API_URL || 'http://ollama-api-server:8000';
+  const url = process.env.OLLAMA_API_URL || 'http://ollama-api-server:8100';
   console.log("Using Ollama API URL:", url);
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
@@ -96,7 +96,7 @@ async function fetchWithTimeout(
 // Function to generate a completion from the Orchestration Service
 export async function generateCompletion(
   query: string,
-  model: string = 'llama3.2',
+  model: string = 'gemma3:4b-it-qat',
   options: Record<string, any> = {},
   metadata: Record<string, any> = {}
 ): Promise<QueryResponse> {
@@ -147,7 +147,7 @@ export async function generateCompletion(
 // Function to stream a completion from the Orchestration Service
 export async function streamCompletion(
   query: string,
-  model: string = 'llama3.2',
+  model: string = 'gemma3:4b-it-qat',
   options: Record<string, any> = {},
   metadata: Record<string, any> = {}
 ): Promise<ReadableStream<Uint8Array>> {

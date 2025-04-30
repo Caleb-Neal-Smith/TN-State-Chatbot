@@ -7,7 +7,7 @@ interface OllamaResponse {
   }
   
   // Default Ollama model
-  const DEFAULT_MODEL = 'llama3.2';
+  const DEFAULT_MODEL = 'gemma3:4b-it-qat';
   
   // Function to get the Ollama API URL from environment variables
   export function getOllamaApiUrl(): string {

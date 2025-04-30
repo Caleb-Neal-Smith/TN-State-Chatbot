@@ -3,7 +3,12 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // Get the response
+  // Redirect root path to overview
+  if (request.nextUrl.pathname === '/') {
+    return NextResponse.redirect(new URL('/overview', request.url));
+  }
+  
+  // Get the response for all other paths
   const response = NextResponse.next();
 
   // Add CORS headers for API routes
@@ -21,7 +26,7 @@ export function middleware(request: NextRequest) {
   return response;
 }
 
-// Specify which paths this middleware should run on
+// Update the matcher to include both the root path and API routes
 export const config = {
-  matcher: '/api/:path*',
+  matcher: ['/', '/api/:path*'],
 };

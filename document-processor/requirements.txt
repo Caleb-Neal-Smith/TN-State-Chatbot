@@ -1,0 +1,12 @@
+# document-processor/requirements.txt
+asyncio
+uvicorn
+httpx
+fastapi
+pydantic
+byaldi>=0.0.7
+pdf2image
+python-multipart
+onnxruntime
+tokenizers
+poppler-utils
