@@ -97,6 +97,15 @@ sequenceDiagram
 - Interaction logging and analytics
 - Load balancing for LLM instances
 
+## Requirements:
+> [!IMPORTANT]
+> This system relies on:
+> - Docker
+> - Docker Compose
+> - Nvidia Container Toolkit
+
+This system will not operate without installing all of these first.
+
 ## Getting Started
 
 The simplest way to deploy the entire system is using Docker Compose:
@@ -107,7 +116,7 @@ Clone the repository:
 git clone https://github.com/Caleb-Neal-Smith/TN-State-Chatbot
 ```
 
-Bring the system online using docker compose:
+Navigate to the root directory of the repositry, and bring the system online using docker compose:
 
 ```bash
 docker-compose up -d
