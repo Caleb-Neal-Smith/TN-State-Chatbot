@@ -51,7 +51,6 @@ class OrchestrationService:
         opensearch_index: str = "rag-interactions",
         opensearch_username: Optional[str] = None,
         opensearch_password: Optional[str] = None,
-        cache_url: Optional[str] = None,
         context_builder_url: Optional[str] = None,
     ):
         self.ollama_api_url = ollama_api_url
@@ -59,7 +58,6 @@ class OrchestrationService:
         self.opensearch_index = opensearch_index
         self.opensearch_username = opensearch_username
         self.opensearch_password = opensearch_password
-        self.cache_url = cache_url
         self.context_builder_url = context_builder_url
         self.client = httpx.AsyncClient(timeout=120.0)
         
@@ -91,48 +89,7 @@ class OrchestrationService:
         if self.os_client:
             await self.os_client.close()
 
-    async def check_cache(self, query: str) -> Optional[Dict[str, Any]]:
-        """Check if a response for the given query exists in the cache."""
-        if not self.cache_url:
-            return None
-            
-        try:
-            # Cache key should consider relevant factors that determine the response
-            cache_key = hash(query)
-            response = await self.client.get(
-                f"{self.cache_url}/get", 
-                params={"key": cache_key}
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            
-            return None
-        except Exception as e:
-            logger.warning(f"Cache check failed: {e}")
-            return None
 
-    async def store_in_cache(self, query: str, response_data: Dict[str, Any]) -> bool:
-        """Store a query/response pair in the cache."""
-        if not self.cache_url:
-            return False
-            
-        try:
-            # Cache key should consider relevant factors that determine the response
-            cache_key = hash(query)
-            response = await self.client.post(
-                f"{self.cache_url}/set", 
-                json={
-                    "key": cache_key,
-                    "value": response_data,
-                    "ttl": 3600  # 1 hour TTL by default
-                }
-            )
-            
-            return response.status_code == 200
-        except Exception as e:
-            logger.warning(f"Cache store failed: {e}")
-            return False
 
     async def log_interaction(
         self, 
@@ -418,7 +375,6 @@ opensearch_url = os.getenv("OPENSEARCH_URL")
 opensearch_index = os.getenv("OPENSEARCH_INDEX", "rag-interactions")
 opensearch_username = os.getenv("OPENSEARCH_USERNAME")
 opensearch_password = os.getenv("OPENSEARCH_PASSWORD")
-cache_url = os.getenv("CACHE_URL")
 context_builder_url = os.getenv("CONTEXT_BUILDER_URL")
 
 # Create orchestration service
@@ -428,7 +384,6 @@ service = OrchestrationService(
     opensearch_index=opensearch_index,
     opensearch_username=opensearch_username,
     opensearch_password=opensearch_password,
-    cache_url=cache_url,
     context_builder_url=context_builder_url,
 )
 
@@ -481,12 +436,6 @@ async def health():
     
     # Get cache health if configured
     cache_status = "not_configured"
-    if cache_url:
-        try:
-            cache_health = await service.client.get(f"{cache_url}/health")
-            cache_status = "healthy" if cache_health.is_success else "unhealthy"
-        except Exception:
-            cache_status = "unavailable"
     
     # Get context builder health if configured
     context_status = "not_configured"
