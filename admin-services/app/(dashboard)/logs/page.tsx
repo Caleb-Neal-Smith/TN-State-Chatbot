@@ -3,10 +3,12 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlertCircle, } from 'lucide-react';
 import LogsFilter from '@/components/logs/LogsFilter';
 import LogsTable from '@/components/logs/LogsTable';
 import LogsPagination from '@/components/logs/LogsPagination';
+import TopQueriesCard from '@/components/logs/TopQueriesCard';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { LogEntry } from '@/app/api/logs/route';
 
@@ -18,6 +20,7 @@ function SearchParamsWrapper({ children }: { children: (params: URLSearchParams)
 
 export default function LogsPage() {
   // State
+  const [activeTab, setActiveTab] = useState<string>('custom');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -36,6 +39,7 @@ export default function LogsPage() {
   const [model, setModel] = useState('');
   const [userId, setUserId] = useState('');
   const [sessionId, setSessionId] = useState('');
+  
   
   // Fetch logs from API
   useEffect(() => {
@@ -83,8 +87,11 @@ export default function LogsPage() {
     }
     
     // Only fetch logs when on the custom tab
+    if (activeTab === 'custom') {
       fetchLogs();
+    }
   }, [
+    activeTab,
     page,
     limit,
     searchQuery,
@@ -157,6 +164,13 @@ export default function LogsPage() {
             if (sessionId !== sessionIdParam) setSessionId(sessionIdParam);
             
             return (
+              <Tabs defaultValue="custom" value={activeTab} onValueChange={setActiveTab}>
+                <TabsList>
+                  <TabsTrigger value="custom">Custom View</TabsTrigger>
+                  <TabsTrigger value="top5">Most Common Queries</TabsTrigger>
+                </TabsList>
+        
+        <TabsContent value="custom" className="space-y-6">
           <Card className="w-full">
             <CardHeader>
               <CardTitle>Query Logs</CardTitle>
@@ -207,6 +221,24 @@ export default function LogsPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        <TabsContent value="top5" className="space-y-6">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between">
+              <div>
+                <CardTitle>Top Queries</CardTitle>
+                <CardDescription>
+                  Explore the most common queries made by users
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <TopQueriesCard />
+            </CardContent>
+          </Card>
+        </TabsContent>
+              </Tabs>
             );
           }}
         </SearchParamsWrapper>
