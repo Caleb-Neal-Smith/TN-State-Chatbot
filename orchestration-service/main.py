@@ -292,7 +292,7 @@ class OrchestrationService:
             logger.info(f"Found {len(base64_images)} base64 images to send to Ollama")
             
             # Create a prompt with the context
-            prompt = f"""Answer the following question based on the provided images:
+            prompt = f"""Answer the following question based on the provided image. Please just provide the answer without any additional information. If the image is not relevant, or there is no image, to the question, please say "I don't know".
 
     Question: {request.query}
 
