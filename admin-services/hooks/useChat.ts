@@ -11,7 +11,7 @@ export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<string>('llama3.2');
+  const [selectedModel, setSelectedModel] = useState<string>('gemma3:4b-it-qat');
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Function to handle errors during streaming

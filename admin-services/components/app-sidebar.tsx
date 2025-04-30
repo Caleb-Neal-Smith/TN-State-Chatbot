@@ -1,4 +1,4 @@
-import { Wrench, Home, Inbox, Settings, BookOpenText } from "lucide-react"
+import { Wrench, Home, Inbox, BookOpenText } from "lucide-react"
 
 import {
   Sidebar,
@@ -32,11 +32,6 @@ const items = [
     title: "Test",
     url: "/chat",
     icon: Wrench,
-  },
-  {
-    title: "Settings",
-    url: "#",
-    icon: Settings,
   },
 ]
 

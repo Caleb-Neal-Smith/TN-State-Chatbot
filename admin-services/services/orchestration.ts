@@ -96,7 +96,7 @@ async function fetchWithTimeout(
 // Function to generate a completion from the Orchestration Service
 export async function generateCompletion(
   query: string,
-  model: string = 'llama3.2',
+  model: string = 'gemma3:4b-it-qat',
   options: Record<string, any> = {},
   metadata: Record<string, any> = {}
 ): Promise<QueryResponse> {
@@ -147,7 +147,7 @@ export async function generateCompletion(
 // Function to stream a completion from the Orchestration Service
 export async function streamCompletion(
   query: string,
-  model: string = 'llama3.2',
+  model: string = 'gemma3:4b-it-qat',
   options: Record<string, any> = {},
   metadata: Record<string, any> = {}
 ): Promise<ReadableStream<Uint8Array>> {
