@@ -1,5 +1,11 @@
 FROM python:3.11-slim
 
+# Install poppler-utils for pdf2image
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+
 WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
@@ -9,9 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
-
-# Install NLTK data
-RUN python -m nltk.downloader punkt_tab
 
 # Expose the port the app runs on
 EXPOSE 8001

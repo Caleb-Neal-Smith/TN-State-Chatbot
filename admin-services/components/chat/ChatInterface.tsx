@@ -29,7 +29,7 @@ export default function ChatInterface() {
       } catch (error) {
         console.error('Error fetching models:', error);
         // Fallback to a default list if fetch fails
-        setAvailableModels(['llama3.2']);
+        setAvailableModels(['gemma3:4b-it-qat']);
       }
     };
 

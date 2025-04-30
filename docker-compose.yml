@@ -14,8 +14,10 @@ services:
       - ORCHESTRATION_SERVICE_URL=http://orchestration-service:9000
       - DOCUMENT_STORAGE_PATH=/app/storage/documents
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
-      - DASHBOARD_URL=http://kibana:5601/app/dashboards
-      - LOGS_URL=http://kibana:5601/app/discover
+      - OPENSEARCH_URL=http://opensearch:9200
+      - OPENSEARCH_INDEX=rag-interactions
+      - OPENSEARCH_USERNAME=
+      - OPENSEARCH_PASSWORD=
     volumes:
       - document_storage:/app/storage/documents
     depends_on:
@@ -63,7 +65,6 @@ services:
       - OLLAMA_API_URL=http://ollama-api-server:8100
       - OPENSEARCH_URL=http://opensearch:9200
       - OPENSEARCH_INDEX=rag-interactions
-      - CACHE_URL=http://redis:6379
       - CONTEXT_BUILDER_URL=http://context-provider:8002
       - PORT=9000
     restart: unless-stopped
@@ -72,15 +73,14 @@ services:
     depends_on:
       opensearch:
         condition: service_healthy
-      redis:
-        condition: service_started
+
       
   ollama-api-server:
     build: ./ollama-api-server
     ports:
       - "8100:8100"
     environment:
-      - OLLAMA_INSTANCES=http://host.docker.internal:11434
+      - OLLAMA_INSTANCES=http://ollama:11434
       - LOAD_BALANCING_STRATEGY=least_connections
     networks:
       - rag-network
@@ -95,11 +95,16 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - CHROMA_DB_HOST=chromadb
-      - CHROMA_DB_PORT=8000
-      - OLLAMA_API_URL=http://host.docker.internal:11434
-      - EMBEDDING_MODEL=nomic-embed-text
-      - COLLECTION_NAME=docs
+      - DOCUMENT_STORAGE_PATH=/app/storage/documents
+      - BYALDI_INDEX_ROOT=/app/byaldi_indexes
+      - BYALDI_MODEL=vidore/colqwen2-v1.0
+      - BYALDI_INDEX_NAME=rag_documents
+      - OLLAMA_API_URL=http://ollama:11434
+      - CONTEXT_PROVIDER_URL=http://context-provider:8002
+      - USE_GPU=true
+    volumes:
+      - document_storage:/app/storage/documents
+      - byaldi_indexes:/app/byaldi_indexes
     networks:
       - rag-network
     healthcheck:
@@ -107,24 +112,39 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
-    depends_on:
-      chromadb:
-        condition: service_started
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   context-provider:
     build: ./context-provider
     ports:
       - "8002:8002"
     environment:
-      - CHROMA_DB_HOST=chromadb
-      - CHROMA_DB_PORT=8000
-      - CHROMA_COLLECTION=docs
-      - PORT=8002
+      - DOCUMENT_STORAGE_PATH=/app/storage/documents
+      - BYALDI_INDEX_ROOT=/app/byaldi_indexes
+      - BYALDI_MODEL=vidore/colqwen2-v1.0
+      - BYALDI_INDEX_NAME=rag_documents
+      - USE_GPU=true
+    volumes:
+      - document_storage:/app/storage/documents
+      - byaldi_indexes:/app/byaldi_indexes
     restart: unless-stopped
     networks:
       - rag-network
     depends_on:
-      - chromadb
+      - document-processor
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   opensearch:
     image: opensearchproject/opensearch:2.10.0
@@ -154,44 +174,28 @@ services:
       timeout: 10s
       retries: 120
       
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.10.0
+  ollama:
+    volumes:
+      - ./ollama/ollama:/root/.ollama
+    container_name: ollama
+    pull_policy: always
+    tty: true
+    restart: unless-stopped
+    image: docker.io/ollama/ollama:latest
     ports:
-      - "5601:5601"
+      - 11434:11434
     environment:
-      - OPENSEARCH_HOSTS=http://opensearch:9200
-      - "DISABLE_SECURITY_DASHBOARDS_PLUGIN=true"
+      - OLLAMA_KEEP_ALIVE=24h
     networks:
       - rag-network
-    depends_on:
-      opensearch:
-        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all 
+              capabilities: [gpu]
       
-  redis:
-    image: redis:7
-    volumes:
-      - redis_data:/data
-    ports:
-      - "6379:6379"
-    networks:
-      - rag-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  chromadb:
-    image: chromadb/chroma:latest
-    volumes:
-      - chroma_data:/data
-    ports:
-      - "8000:8000"
-    networks:
-      - rag-network
-    environment:
-      - CHROMA_SERVER_HOST=0.0.0.0
-      - CHROMA_SERVER_PORT=8000
 
 networks:
   rag-network:
@@ -200,6 +204,5 @@ networks:
 volumes:
   postgres_data:
   document_storage:
-  redis_data:
   opensearch_data:
-  chroma_data:
+  byaldi_indexes:

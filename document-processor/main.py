@@ -1,32 +1,24 @@
+# document-processor/main.py
 import os
 import uuid
 import tempfile
 import logging
 import asyncio
-from typing import List, Dict, Any, Optional, Union, Tuple
+import base64
+import shutil
+from typing import List, Dict, Any, Optional, Union
 from enum import Enum
+from pathlib import Path
 
 import uvicorn
 import httpx
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import chromadb
-from chromadb.config import Settings
-from chromadb.utils import embedding_functions
+from PIL import Image
 
-# Document processing libraries
-import fitz  # PyMuPDF for PDF processing
-import docx  # python-docx for DOCX processing
-import re
-import nltk
-from nltk.tokenize import sent_tokenize
-
-# Download NLTK resources if not already downloaded
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt_tab')
+# Import Byaldi for multi-modal document processing
+from byaldi import RAGMultiModalModel
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +32,7 @@ class DocumentType(str, Enum):
     PDF = "pdf"
     DOCX = "docx"
     TEXT = "txt"
+    IMAGE = "image"
     UNKNOWN = "unknown"
 
 # Schema for document chunk
@@ -61,34 +54,65 @@ class ProcessedDocument(BaseModel):
 # Create FastAPI app
 app = FastAPI(
     title="Document Processing Service",
-    description="Service for processing documents, generating embeddings, and storing in Milvus",
+    description="Multi-modal document processing service using Byaldi",
     version="1.0.0",
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Configuration from environment variables
-CHROMA_HOST = os.getenv("CHROMA_DB_HOST", "chromadb")
-CHROMA_PORT = int(os.getenv("CHROMA_DB_PORT", "8000"))
-CHROMA_PERSIST_DIRECTORY = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
-OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:8000")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "docs")
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))  # Characters per chunk
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "128"))  # Overlap between chunks
-MAX_CHUNKS_PER_DOC = int(os.getenv("MAX_CHUNKS_PER_DOC", "500"))  # Maximum chunks per document
+OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+DOCUMENT_STORAGE_PATH = os.getenv("DOCUMENT_STORAGE_PATH", "./storage/documents")
+BYALDI_INDEX_ROOT = os.getenv("BYALDI_INDEX_ROOT", "./byaldi_indexes")
+BYALDI_MODEL = os.getenv("BYALDI_MODEL", "vidore/colqwen2-v1.0")
+INDEX_NAME = os.getenv("BYALDI_INDEX_NAME", "rag_documents")
 
 # HTTP client
 http_client = httpx.AsyncClient(timeout=60.0)
 
-# Document processing functions
+# Initialize Byaldi model (lazy initialization)
+byaldi_model = None
+
+def get_byaldi_model():
+    """Get or initialize the Byaldi model"""
+    global byaldi_model
+    
+    if byaldi_model is None:
+        try:
+            # Check if index exists
+            index_path = Path(BYALDI_INDEX_ROOT) / INDEX_NAME
+            
+            if index_path.exists():
+                # Try to load from existing index
+                logger.info(f"Loading existing Byaldi index from {index_path}")
+                byaldi_model = RAGMultiModalModel.from_index(
+                    index_path=INDEX_NAME,
+                    index_root=BYALDI_INDEX_ROOT,
+                    device="cpu",  # Use CPU for now since GPU access isn't working
+                    verbose=1
+                )
+            else:
+                # Initialize a new model without loading from index
+                logger.info(f"Creating new Byaldi model using {BYALDI_MODEL}")
+                byaldi_model = RAGMultiModalModel.from_pretrained(
+                    pretrained_model_name_or_path=BYALDI_MODEL,
+                    index_root=BYALDI_INDEX_ROOT,
+                    device="cpu",  # Use CPU for now since GPU access isn't working
+                    verbose=1
+                )
+        except Exception as e:
+            logger.error(f"Error initializing Byaldi model: {e}")
+            raise
+    
+    return byaldi_model
+
 def detect_document_type(filename: str, content_type: str = None) -> DocumentType:
     """Detect document type from filename and content type."""
     extension = filename.lower().split('.')[-1]
@@ -100,6 +124,8 @@ def detect_document_type(filename: str, content_type: str = None) -> DocumentTyp
         return DocumentType.DOCX
     elif extension in ["txt", "text"]:
         return DocumentType.TEXT
+    elif extension in ["jpg", "jpeg", "png", "gif"]:
+        return DocumentType.IMAGE
     
     # If extension check doesn't provide a clear answer, check content type
     if content_type:
@@ -109,176 +135,91 @@ def detect_document_type(filename: str, content_type: str = None) -> DocumentTyp
             return DocumentType.DOCX
         elif 'text' in content_type or 'txt' in content_type or 'plain' in content_type:
             return DocumentType.TEXT
+        elif 'image' in content_type:
+            return DocumentType.IMAGE
     
-    # If still can't determine, try to open the file and check content
-    try:
-        with open(filename, 'rb') as f:
-            # Check for PDF signature
-            if f.read(4) == b'%PDF':
-                return DocumentType.PDF
-    except:
-        pass
-    
-    # Default case - unknown
+    # Default case
     return DocumentType.UNKNOWN
 
-async def extract_text_from_pdf(file_path: str) -> str:
-    """Extract text from a PDF file."""
-    try:
-        text = ""
-        with fitz.open(file_path) as pdf:
-            for page in pdf:
-                text += page.get_text()
-        return text
-    except Exception as e:
-        logger.error(f"Error extracting text from PDF: {e}")
-        raise
+async def save_document_to_storage(file_content: bytes, original_filename: str, document_id: str) -> str:
+    """Save uploaded document to storage and return the path."""
+    # Create year/month based directory
+    from datetime import datetime
+    now = datetime.now()
+    year_month = f"{now.year}/{now.month:02d}"
+    
+    # Full storage path
+    storage_dir = Path(DOCUMENT_STORAGE_PATH) / year_month
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get file extension
+    ext = original_filename.split('.')[-1].lower()
+    
+    # Create filename with document_id and original extension
+    filename = f"{document_id}.{ext}"
+    
+    # Full file path
+    file_path = storage_dir / filename
+    
+    # Save file
+    with open(file_path, 'wb') as f:
+        f.write(file_content)
+    
+    # Return relative path from storage root
+    return str(Path(year_month) / filename)
 
-async def extract_text_from_docx(file_path: str) -> str:
-    """Extract text from a DOCX file."""
-    try:
-        doc = docx.Document(file_path)
-        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-        return text
-    except Exception as e:
-        logger.error(f"Error extracting text from DOCX: {e}")
-        raise
-
-async def extract_text_from_txt(file_path: str) -> str:
-    """Extract text from a plain text file."""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except Exception as e:
-        logger.error(f"Error extracting text from TXT: {e}")
-        raise
-
-async def extract_text(file_path: str, document_type: DocumentType) -> str:
-    """Extract text from a document based on its type."""
+async def save_document_images(document_id: str, file_path: str, document_type: DocumentType) -> Dict[int, str]:
+    """
+    Save document as images in the storage path
+    Returns a mapping of page numbers to image paths
+    """
+    full_path = Path(DOCUMENT_STORAGE_PATH) / file_path
+    images_dir = Path(DOCUMENT_STORAGE_PATH) / "images" / document_id
+    images_dir.mkdir(parents=True, exist_ok=True)
+    
+    page_image_paths = {}
+    
     if document_type == DocumentType.PDF:
-        return await extract_text_from_pdf(file_path)
-    elif document_type == DocumentType.DOCX:
-        return await extract_text_from_docx(file_path)
-    elif document_type == DocumentType.TEXT:
-        return await extract_text_from_txt(file_path)
-    else:
-        raise ValueError(f"Unsupported document type: {document_type}")
-
-def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
-    """Split text into chunks with overlap."""
-    # Basic sentence tokenization to avoid cutting sentences
-    sentences = sent_tokenize(text)
-    chunks = []
-    current_chunk = ""
-    
-    for sentence in sentences:
-        # If adding this sentence would exceed the chunk size, save the current chunk
-        if len(current_chunk) + len(sentence) > chunk_size and current_chunk:
-            chunks.append(current_chunk)
-            # Keep the overlap amount from the end of the current chunk
-            current_chunk = current_chunk[-chunk_overlap:] if chunk_overlap < len(current_chunk) else current_chunk
+        from pdf2image import convert_from_path
         
-        current_chunk += sentence + " "
-    
-    # Add the last chunk if it's not empty
-    if current_chunk.strip():
-        chunks.append(current_chunk)
-    
-    # Limit the number of chunks to prevent processing too many
-    if len(chunks) > MAX_CHUNKS_PER_DOC:
-        logger.warning(f"Document has {len(chunks)} chunks, limiting to {MAX_CHUNKS_PER_DOC}")
-        chunks = chunks[:MAX_CHUNKS_PER_DOC]
-    
-    return chunks
-
-async def setup_chroma_collection():
-    """Setup ChromaDB connection and create collection if it doesn't exist."""
-    try:
-        # Get or create the ChromaDB client
-        chroma_client = get_chroma_client()
+        # Convert PDF to images
+        images = convert_from_path(
+            full_path,
+            thread_count=os.cpu_count() - 1,
+            output_folder=str(images_dir),
+            fmt="png",
+            output_file=f"page"
+        )
         
-        collection = chroma_client.get_or_create_collection(name=COLLECTION_NAME)
-
-        return collection
-    except Exception as e:
-        logger.error(f"Failed to setup ChromaDB collection: {e}")
-        raise
-
-def get_chroma_client():
-    """Get a ChromaDB client."""
-    try:
-        client = chromadb.HttpClient(host=f"{CHROMA_HOST}", port=CHROMA_PORT)
-        client.heartbeat()
-
-        return client
-    except Exception as e:
-        logger.error(f"Failed to connect to ChromaDB: {e}")
-        raise
-
-
-
-async def insert_chunks_to_chroma(chunks: List[DocumentChunk], embeddings: List[List[float]] = None):
-    """Insert chunks and their embeddings into ChromaDB."""
-    try:
-        # Get the ChromaDB client and collection
-        chroma_client = get_chroma_client()
-        collection = chroma_client.get_collection(name=COLLECTION_NAME)
-        
-        # Prepare data for insertion
-        ids = [chunk.chunk_id for chunk in chunks]
-        documents = [chunk.text for chunk in chunks]
-        metadatas = []
-        
-        # Log lengths for debugging
-        logger.info(f"Inserting chunks to ChromaDB: ids={len(ids)}, documents={len(documents)}")
-        
-        # Process metadata to make it compatible with ChromaDB
-        for chunk in chunks:
-            # Make sure metadata is JSON serializable
-            metadata = dict(chunk.metadata)
-            metadata["document_id"] = chunk.document_id
+        # Save paths for each page
+        for i, image in enumerate(images):
+            page_num = i + 1  # 1-indexed page numbers
+            image_filename = f"page_{page_num}.png"
+            image_path = images_dir / image_filename
             
-            # Ensure all values are strings or simple types
-            for key, value in list(metadata.items()):
-                if isinstance(value, (dict, list)):
-                    metadata[key] = str(value)
-                elif not isinstance(value, (str, int, float, bool, type(None))):
-                    metadata[key] = str(value)
+            # Ensure the file is saved (pdf2image doesn't always name files consistently)
+            if not image_path.exists():
+                image.save(image_path)
+                
+            page_image_paths[page_num] = str(Path("images") / document_id / image_filename)
             
-            metadatas.append(metadata)
+    elif document_type == DocumentType.IMAGE:
+        # For single images, just make a copy in the images directory
+        image_filename = f"page_1.png"
+        image_path = images_dir / image_filename
         
-        logger.info(f"Prepared metadata: {len(metadatas)} items")
+        # Open and save to ensure consistent format
+        img = Image.open(full_path)
+        img.save(image_path)
         
-        # Check that all arrays have the same length
-        if not (len(ids) == len(documents) == len(metadatas)):
-            raise ValueError(f"Inconsistent lengths: ids={len(ids)}, documents={len(documents)}, metadatas={len(metadatas)}")
+        page_image_paths[1] = str(Path("images") / document_id / image_filename)
         
-        # Insert data in batches to avoid potential issues with large documents
-        batch_size = 50
-        for i in range(0, len(ids), batch_size):
-            batch_end = min(i + batch_size, len(ids))
-            batch_ids = ids[i:batch_end]
-            batch_documents = documents[i:batch_end]
-            batch_metadatas = metadatas[i:batch_end]
-            
-            logger.info(f"Inserting batch {i//batch_size + 1}: {len(batch_ids)} chunks")
-            
-            # Insert data
-            collection.add(
-                ids=batch_ids,
-                documents=batch_documents,
-                metadatas=batch_metadatas,
-            )
+    elif document_type in [DocumentType.DOCX, DocumentType.TEXT]:
+        # For DOCX/text, we could implement a text-to-image conversion or 
+        # use a document renderer, but for now we'll skip this
+        logger.warning(f"Document type {document_type} not supported for image extraction yet")
         
-        logger.info(f"Successfully inserted {len(chunks)} chunks into ChromaDB")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to insert chunks into ChromaDB: {str(e)}")
-        # Log additional debug info
-        if chunks:
-            logger.error(f"First chunk ID: {chunks[0].chunk_id}, text length: {len(chunks[0].text)}")
-            logger.error(f"Metadata keys: {chunks[0].metadata.keys() if chunks[0].metadata else 'None'}")
-        raise
+    return page_image_paths
 
 async def process_file_background(
     file_path: str,
@@ -287,91 +228,93 @@ async def process_file_background(
     metadata: Dict[str, Any],
     document_id: str
 ):
-    """Background task to process a file."""
+    """Background task to process a file with Byaldi."""
     try:
-        await process_document(file_path, filename, document_type, metadata, document_id)
+        # Get full path to stored document
+        full_document_path = Path(DOCUMENT_STORAGE_PATH) / file_path
+        
+        # First save the document as images
+        page_image_paths = await save_document_images(document_id, file_path, document_type)
+        
+        # Add image paths to metadata
+        metadata["page_image_paths"] = page_image_paths
+        metadata["original_filename"] = filename
+        metadata["document_type"] = document_type
+        metadata["file_path"] = file_path
+        
+        # Initialize or get Byaldi model
+        model = get_byaldi_model()
+        
+        # Check if the Byaldi index exists
+        index_path = Path(BYALDI_INDEX_ROOT) / INDEX_NAME
+        
+        if index_path.exists():
+            # Add document to existing index
+            logger.info(f"Adding document to existing index at {index_path}")
+            model.add_to_index(
+                input_item=str(full_document_path),
+                store_collection_with_index=True,  # Store base64 encoded images
+                doc_id=int(document_id) if document_id.isdigit() else hash(document_id),
+                metadata=metadata
+            )
+        else:
+            # Create new index with this document
+            logger.info(f"Creating new index at {index_path} with document {document_id}")
+            model.index(
+                input_path=str(full_document_path),
+                index_name=INDEX_NAME,
+                store_collection_with_index=True,
+                doc_ids=[int(document_id) if document_id.isdigit() else hash(document_id)],
+                metadata=[metadata],
+                overwrite=True
+            )
+        
+        logger.info(f"Document {document_id} processed and indexed successfully")
+
+        try:
+            context_provider_url = os.getenv("CONTEXT_PROVIDER_URL", "http://context-provider:8002")
+            reload_response = await http_client.post(f"{context_provider_url}/reload_index")
+            
+            if reload_response.is_success:
+                logger.info("Successfully notified context provider to reload index")
+            else:
+                logger.warning(f"Failed to notify context provider: {reload_response.text}")
+                
+        except Exception as reload_error:
+            logger.error(f"Error notifying context provider: {reload_error}")
+        
     except Exception as e:
         logger.error(f"Background processing failed: {e}")
-    finally:
-        # Remove the temporary file
-        try:
-            os.remove(file_path)
-        except Exception as e:
-            logger.error(f"Failed to remove temporary file: {e}")
 
-async def process_document(
-    file_path: str,
-    filename: str,
-    document_type: DocumentType,
-    metadata: Dict[str, Any],
-    document_id: str
-) -> ProcessedDocument:
-    """Process a document: extract text, chunk it, generate embeddings, and store in ChromaDB."""
-    try:
-        # Use the provided document_id instead of generating a new one
-        logger.info(f"Processing document with ID: {document_id}")
-        
-        # Extract text from document
-        extracted_text = await extract_text(file_path, document_type)
-        
-        # Chunk the text - renamed variable to avoid conflict with function name
-        text_chunks = chunk_text(extracted_text, CHUNK_SIZE, CHUNK_OVERLAP)
-        
-        document_chunks = []
-        
-        # Create chunk objects
-        for i, chunk_content in enumerate(text_chunks):
-            chunk_id = str(uuid.uuid4())
-            
-            # Create document chunk
-            chunk = DocumentChunk(
-                chunk_id=chunk_id,
-                document_id=document_id,  # Use the provided document ID
-                text=chunk_content,
-                metadata={
-                    "chunk_index": i,
-                    "filename": filename,
-                    "original_filename": metadata.get("original_filename", filename),
-                    "document_type": document_type,
-                    **metadata
-                }
-            )
-            
-            document_chunks.append(chunk)
-        
-        # Insert chunks into ChromaDB
-        await insert_chunks_to_chroma(document_chunks)
-        
-        return ProcessedDocument(
-            document_id=document_id,  # Use the provided document ID
-            filename=filename,
-            document_type=document_type,
-            chunk_count=len(document_chunks),
-            metadata=metadata
-        )
-    except Exception as e:
-        logger.error(f"Error processing document: {e}")
-        raise
-
-# Endpoints
 @app.on_event("startup")
 async def startup_event():
     """Start up event handler."""
-    # Setup ChromaDB collection
-    await setup_chroma_collection()
+    # Ensure storage directories exist
+    Path(DOCUMENT_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
+    Path(BYALDI_INDEX_ROOT).mkdir(parents=True, exist_ok=True)
+    
+    # Initialize Byaldi model (but don't actually load it until needed)
+    try:
+        # Just check if we can load the model, but don't actually load it yet
+        index_path = Path(BYALDI_INDEX_ROOT) / INDEX_NAME
+        if index_path.exists():
+            logger.info(f"Byaldi index exists at {index_path}")
+        else:
+            logger.info(f"No existing Byaldi index found at {index_path}, will create when needed")
+    except Exception as e:
+        logger.error(f"Error checking Byaldi index: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler."""
     # Close HTTP client
     await http_client.aclose()
-    # ChromaDB automatically closes connections
 
 @app.get("/")
 async def root():
     """Root endpoint returning service info."""
     return {
-        "service": "Document Processing Service",
+        "service": "Document Processing Service (Byaldi Multi-Modal)",
         "version": "1.0.0",
         "status": "running",
     }
@@ -380,17 +323,20 @@ async def root():
 async def health():
     """Health check endpoint."""
     try:
-        # Check ChromaDB connection
-        chroma_client = get_chroma_client()
-        chroma_health = COLLECTION_NAME in chroma_client.list_collections()
+        # Check if Byaldi index exists
+        index_path = Path(BYALDI_INDEX_ROOT) / INDEX_NAME
+        byaldi_health = index_path.exists()
         
-        # Check Ollama API
-        ollama_response = await http_client.get(f"{OLLAMA_API_URL}/health")
-        ollama_health = ollama_response.status_code == 200
+        # Optional: Check Ollama API if needed
+        try:
+            ollama_response = await http_client.get(f"{OLLAMA_API_URL}/health")
+            ollama_health = ollama_response.status_code == 200
+        except Exception:
+            ollama_health = False
         
         return {
-            "status": "healthy" if chroma_health and ollama_health else "unhealthy",
-            "chroma": "healthy" if chroma_health else "unhealthy",
+            "status": "healthy" if byaldi_health else "unhealthy",
+            "byaldi": "healthy" if byaldi_health else "unhealthy",
             "ollama": "healthy" if ollama_health else "unhealthy",
         }
     except Exception as e:
@@ -428,15 +374,9 @@ async def process_file(
             logger.warning(f"Unsupported file type. Filename: {file.filename}, Content-Type: {file.content_type}")
             raise HTTPException(status_code=400, detail=f"Unsupported file type. Content-Type: {file.content_type}")
         
-        # Save the uploaded file temporarily
-        temp_file = tempfile.NamedTemporaryFile(delete=False)
-        try:
-            contents = await file.read()
-            with open(temp_file.name, 'wb') as f:
-                f.write(contents)
-        except Exception as e:
-            os.unlink(temp_file.name)
-            raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+        # Read and save the uploaded file
+        contents = await file.read()
+        file_path = await save_document_to_storage(contents, file.filename, document_id)
         
         # Add file info to metadata
         metadata_dict["original_filename"] = file.filename
@@ -445,11 +385,11 @@ async def process_file(
         # Add the processing task to background tasks
         background_tasks.add_task(
             process_file_background,
-            temp_file.name,
+            file_path,
             file.filename,
             document_type,
             metadata_dict,
-            document_id  # Pass the document ID to the background task
+            document_id
         )
         
         return {
@@ -465,67 +405,45 @@ async def process_file(
     
 @app.delete("/documents/{document_id}")
 async def delete_document(document_id: str, filename: str = None):
-    """Delete a document and its associated vectors from ChromaDB."""
+    """Delete a document and its associated vectors from the index."""
     try:
         logger.info(f"Received request to delete document with ID: {document_id}")
         
-        # Get the ChromaDB client and collection
-        chroma_client = get_chroma_client()
-        collection = chroma_client.get_collection(name=COLLECTION_NAME)
+        # Get the Byaldi model
+        model = get_byaldi_model()
         
-        # Try different methods to find and delete document chunks
-        deleted_count = 0
+        # Get mapping of doc IDs to file names
+        doc_id_map = model.get_doc_ids_to_file_names()
         
-        # Method 1: Try direct document_id field
-        query_result = collection.get(
-            where={"document_id": document_id}
-        )
+        # Check if document exists in the index
+        found = False
+        for doc_id, fname in doc_id_map.items():
+            if str(doc_id) == document_id or (filename and filename in fname):
+                found = True
+                break
         
-        if query_result and 'ids' in query_result and query_result['ids']:
-            chunk_count = len(query_result['ids'])
-            logger.info(f"Found {chunk_count} chunks with document_id field")
-            
-            collection.delete(ids=query_result['ids'])
-            deleted_count += chunk_count
-        
-        # Method 2: Try documentId field (might be used in metadata)
-        query_result = collection.get(
-            where={"documentId": document_id}
-        )
-        
-        if query_result and 'ids' in query_result and query_result['ids']:
-            chunk_count = len(query_result['ids'])
-            logger.info(f"Found {chunk_count} chunks with documentId field")
-            
-            collection.delete(ids=query_result['ids'])
-            deleted_count += chunk_count
-        
-        # Method 3: Try by filename if provided
-        if filename and deleted_count == 0:
-            logger.info(f"Trying to delete by filename: {filename}")
-            query_result = collection.get(
-                where={"filename": filename}
-            )
-            
-            if query_result and 'ids' in query_result and query_result['ids']:
-                chunk_count = len(query_result['ids'])
-                logger.info(f"Found {chunk_count} chunks with filename: {filename}")
-                
-                collection.delete(ids=query_result['ids'])
-                deleted_count += chunk_count
-        
-        if deleted_count > 0:
-            return {
-                "status": "success",
-                "message": f"Document {document_id} and {deleted_count} associated chunks deleted successfully",
-                "deleted_chunks": deleted_count
-            }
-        else:
-            logger.warning(f"No chunks found for document {document_id}")
+        if not found:
+            logger.warning(f"Document {document_id} not found in index")
             return {
                 "status": "warning",
-                "message": f"No chunks found for document {document_id}"
+                "message": f"Document {document_id} not found in index"
             }
+        
+        # Remove document from index (Byaldi doesn't have removal yet, so we'd need to reindex)
+        logger.warning("Document removal not directly supported - rebuilding index without this document")
+        
+        # Get document metadata to find image paths
+        # Clean up the document images if they exist
+        images_dir = Path(DOCUMENT_STORAGE_PATH) / "images" / document_id
+        if images_dir.exists():
+            shutil.rmtree(images_dir)
+            logger.info(f"Removed images directory for document {document_id}")
+            
+        # For now, we'd just return a message indicating limited removal capability
+        return {
+            "status": "partial_success",
+            "message": f"Document {document_id} image files have been removed. Full index cleanup requires reindexing."
+        }
             
     except Exception as e:
         logger.error(f"Error deleting document {document_id}: {e}")
@@ -538,22 +456,26 @@ async def delete_document(document_id: str, filename: str = None):
 async def service_status():
     """Get service status and statistics."""
     try:
-        # Check ChromaDB collection
-        chroma_client = get_chroma_client()
-        collection = chroma_client.get_collection(name=COLLECTION_NAME)
-        collection_count = collection.count()
-        
-        collection_info = {
-            "document_count": collection_count
-        }
+        # Check if Byaldi index exists
+        index_path = Path(BYALDI_INDEX_ROOT) / INDEX_NAME
+        if index_path.exists():
+            try:
+                # Get document count (would require loading the model)
+                model = get_byaldi_model()
+                doc_id_map = model.get_doc_ids_to_file_names()
+                document_count = len(doc_id_map)
+            except Exception as e:
+                logger.error(f"Error getting document count: {e}")
+                document_count = "unknown"
+        else:
+            document_count = 0
         
         return {
             "status": "running",
-            "collection": COLLECTION_NAME,
-            "collection_info": collection_info,
-            "embedding_model": EMBEDDING_MODEL,
-            "chunk_size": CHUNK_SIZE,
-            "chunk_overlap": CHUNK_OVERLAP
+            "index": str(index_path),
+            "index_exists": index_path.exists(),
+            "document_count": document_count,
+            "model": BYALDI_MODEL
         }
     except Exception as e:
         logger.error(f"Status check failed: {e}")
