@@ -8,8 +8,12 @@ from pymilvus import MilvusClient
 dir_name = "./Documents/pdf_data/"
 
 
-documents = SimpleDirectoryReader(
-        dir_name, recursive=True
+# documents = SimpleDirectoryReader(
+#         dir_name, recursive=True
+# ).load_data()
+
+pdf_document = SimpleDirectoryReader(
+    input_files=[f"{dir_name}attention.pdf"]
 ).load_data()
 
 
