@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+      "target": "ES2020",                         // ECMAScript version
+      "module": "commonjs",                      // CommonJS modules for Node.js
+      "strict": true,                             // Enable strict type checks
+      "esModuleInterop": true,                    // Allow default imports
+      "forceConsistentCasingInFileNames": true,   // Enforce file name consistency
+      "skipLibCheck": true,                       // Skip type checking for dependencies
+      "outDir": "dist"                            // Output directory for compiled files
+    },
+    "include": ["./**/*.ts"],                     // Include all TS files
+    "exclude": ["node_modules"]                   // Exclude dependencies
+  }
