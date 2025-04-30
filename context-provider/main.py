@@ -84,16 +84,24 @@ def get_byaldi_model():
                 byaldi_model = RAGMultiModalModel.from_index(
                     index_path=INDEX_NAME,
                     index_root=BYALDI_INDEX_ROOT,
-                    device="cuda" if os.environ.get("USE_GPU", "true").lower() == "true" else "cpu",
+                    device="cpu",  # Using CPU for reliability
                     verbose=1
                 )
+                
+                # Check if the model was successfully loaded
+                if byaldi_model:
+                    # Get document count as a quick validation
+                    try:
+                        doc_count = len(byaldi_model.get_doc_ids_to_file_names())
+                        logger.info(f"Successfully loaded index with {doc_count} documents")
+                    except Exception as count_error:
+                        logger.warning(f"Index loaded but couldn't count documents: {count_error}")
             else:
-                # Initialize a new model (though we should already have an index)
                 logger.warning(f"No existing index found at {index_path}. Initializing new model.")
                 byaldi_model = RAGMultiModalModel.from_pretrained(
                     pretrained_model_name_or_path=BYALDI_MODEL,
                     index_root=BYALDI_INDEX_ROOT,
-                    device="cuda" if os.environ.get("USE_GPU", "true").lower() == "true" else "cpu",
+                    device="cpu",  # Using CPU for reliability
                     verbose=1
                 )
         except Exception as e:
@@ -295,9 +303,31 @@ async def get_raw_chunks(request: ContextRequest):
             "query": request.query,
             "results": dict_results
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting raw chunks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/reload_index")
+async def reload_index():
+    """Reload the Byaldi index when new documents are added."""
+    try:
+        global byaldi_model
+        
+        # Clear the current model instance
+        byaldi_model = None
+        
+        # Reinitialize the model to load the latest index
+        model = get_byaldi_model()
+        
+        retrieval_logger.info(f"Successfully reloaded Byaldi index from {BYALDI_INDEX_ROOT}/{INDEX_NAME}")
+        
+        return {
+            "status": "success",
+            "message": "Index reloaded successfully"
+        }
+    except Exception as e:
+        retrieval_logger.error(f"Error reloading index: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
