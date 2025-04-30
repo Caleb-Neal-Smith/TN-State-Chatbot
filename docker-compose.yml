@@ -104,6 +104,7 @@ services:
       - BYALDI_MODEL=vidore/colqwen2-v1.0
       - BYALDI_INDEX_NAME=rag_documents
       - OLLAMA_API_URL=http://ollama:11434
+      - CONTEXT_PROVIDER_URL=http://context-provider:8002
       - USE_GPU=true
     volumes:
       - document_storage:/app/storage/documents

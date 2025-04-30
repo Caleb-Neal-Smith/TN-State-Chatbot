@@ -270,6 +270,18 @@ async def process_file_background(
             )
         
         logger.info(f"Document {document_id} processed and indexed successfully")
+
+        try:
+            context_provider_url = os.getenv("CONTEXT_PROVIDER_URL", "http://context-provider:8002")
+            reload_response = await http_client.post(f"{context_provider_url}/reload_index")
+            
+            if reload_response.is_success:
+                logger.info("Successfully notified context provider to reload index")
+            else:
+                logger.warning(f"Failed to notify context provider: {reload_response.text}")
+                
+        except Exception as reload_error:
+            logger.error(f"Error notifying context provider: {reload_error}")
         
     except Exception as e:
         logger.error(f"Background processing failed: {e}")
