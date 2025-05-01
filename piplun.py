@@ -10,10 +10,12 @@ from enum import Enum
 from pathlib import Path
 import pymilvus
 
+import shutil
+
 import httpx
 import uvicorn
 from opensearchpy import AsyncOpenSearch
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -24,7 +26,8 @@ import os
 import logging
 import asyncio
 
-DOCUMENT_STORAGE_PATH = os.getenv("DOCUMENT_STORAGE_PATH", "./storage/documents")
+UPLOAD_DIR = "./Documents/pdf_data/"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("piplun")
@@ -47,14 +50,6 @@ class QueryResponse(BaseModel):
     duration_ms: int
     timestamp: int
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
-# Document type enum
-class DocumentType(str, Enum):
-    PDF = "pdf"
-    DOCX = "docx"
-    TEXT = "txt"
-    IMAGE = "image"
-    UNKNOWN = "unknown"
 
 app = FastAPI(
     title="Piplun",
@@ -116,153 +111,37 @@ async def query(request: QueryRequest):
     query_response.response = contextGrab(request.query, request.model)
     
     return query_response
-    
-async def process_file_background(
-    file_path: str,
-    filename: str,
-    document_type: DocumentType,
-    metadata: Dict[str, Any],
-    document_id: str
-):
+
+
+@app.post("/upload/")
+async def upload_file(file: UploadFile = File(...)):
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
+
+    # Save uploaded file
+    file_id = str(uuid.uuid4())
+    saved_path = os.path.join(UPLOAD_DIR, f"{file_id}.pdf")
+    with open(saved_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Set embedding and LLM settings
+    Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
+    Settings.llm = Ollama(model="llama3.2", temperature=0.1, request_timeout=480.0)
+    Settings.chunk_size = 128
+    Settings.chunk_overlap = 64
+
+    # Process the PDF file
     try:
-        # Get full path to stored document
-        full_document_path = Path(DOCUMENT_STORAGE_PATH) / file_path
-        metadata["original_filename"] = filename
-        metadata["document_type"] = document_type
-        metadata["file_path"] = file_path
-        """Process a new document"""
-        document = SimpleDirectoryReader(
-            input_files=[f"{str(full_document_path)}"]
-        ).load_data()
-        embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
-        llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0)
-        
-        Settings.llm = llm
-        Settings.embed_model = embedding_model
-        
-        # IMPORTANT: Experiment with chunk sizes and evaluate with performance metrics!!!
-        Settings.chunk_size = 128
-        Settings.chunk_overlap = 64
-        
+        documents = SimpleDirectoryReader(input_files=[saved_path]).load_data()
+
+        vector_store = MilvusVectorStore(uri="http://149.165.151.119:19530", dim=768, overwrite=False)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
-        index = VectorStoreIndex.from_documents(
-            document, storage_context=storage_context
-        )
-        
-        logger.info(f"Document {document_id} processed and indexed successfully")
+
+        # Embed and index
+        VectorStoreIndex.from_documents(documents, storage_context=storage_context)
+
+        return JSONResponse(content={"status": "success", "file_id": file_id})
     except Exception as e:
-        logger.error(f"Background processing failed: {e}")
-    
-async def save_document_to_storage(file_content: bytes, original_filename: str, document_id: str) -> str:
-    """Save uploaded document to storage and return the path."""
-    # Create year/month based directory
-    from datetime import datetime
-    now = datetime.now()
-    year_month = f"{now.year}/{now.month:02d}"
-    
-    # Full storage path
-    storage_dir = Path(DOCUMENT_STORAGE_PATH) / year_month
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Get file extension
-    ext = original_filename.split('.')[-1].lower()
-    
-    # Create filename with document_id and original extension
-    filename = f"{document_id}.{ext}"
-    
-    # Full file path
-    file_path = storage_dir / filename
-    
-    # Save file
-    with open(file_path, 'wb') as f:
-        f.write(file_content)
-    
-    # Return relative path from storage root
-    return str(Path(year_month) / filename)
-    
-def detect_document_type(filename: str, content_type: str = None) -> DocumentType:
-    """Detect document type from filename and content type."""
-    extension = filename.lower().split('.')[-1]
-    
-    # First check based on file extension
-    if extension == "pdf":
-        return DocumentType.PDF
-    elif extension in ["docx", "doc"]:
-        return DocumentType.DOCX
-    elif extension in ["txt", "text"]:
-        return DocumentType.TEXT
-    elif extension in ["jpg", "jpeg", "png", "gif"]:
-        return DocumentType.IMAGE
-    
-    # If extension check doesn't provide a clear answer, check content type
-    if content_type:
-        if 'pdf' in content_type:
-            return DocumentType.PDF
-        elif 'word' in content_type or 'docx' in content_type or 'doc' in content_type:
-            return DocumentType.DOCX
-        elif 'text' in content_type or 'txt' in content_type or 'plain' in content_type:
-            return DocumentType.TEXT
-        elif 'image' in content_type:
-            return DocumentType.IMAGE
-    
-    # Default case
-    return DocumentType.UNKNOWN
-    
-@app.post("/process", response_model=Dict[str, Any])
-async def process_file(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    metadata: str = Form("{}")
-):
-    """Endpoint to upload and process a document."""
-    try:
-        # Parse metadata
-        try:
-            import json
-            metadata_dict = json.loads(metadata)
-        except Exception:
-            metadata_dict = {}
-        
-        # Get document ID from metadata or generate new one
-        document_id = metadata_dict.get("documentId")
-        if not document_id:
-            document_id = str(uuid.uuid4())
-            logger.warning(f"No document ID provided in metadata, generated new ID: {document_id}")
-        
-        # Detect document type using both filename and content type
-        document_type = detect_document_type(file.filename, file.content_type)
-        if document_type == DocumentType.UNKNOWN:
-            # Log the content type for debugging
-            logger.warning(f"Unsupported file type. Filename: {file.filename}, Content-Type: {file.content_type}")
-            raise HTTPException(status_code=400, detail=f"Unsupported file type. Content-Type: {file.content_type}")
-        
-        # Read and save the uploaded file
-        contents = await file.read()
-        file_path = await save_document_to_storage(contents, file.filename, document_id)
-        
-        # Add file info to metadata
-        metadata_dict["original_filename"] = file.filename
-        metadata_dict["content_type"] = file.content_type or "unknown"
-        
-        # Add the processing task to background tasks
-        background_tasks.add_task(
-            process_file_background,
-            file_path,
-            file.filename,
-            document_type,
-            metadata_dict,
-            document_id
-        )
-        
-        return {
-            "status": "processing",
-            "document_id": document_id,
-            "filename": file.filename,
-            "document_type": document_type,
-            "message": "File uploaded and processing started in the background"
-        }
-    except Exception as e:
-        logger.error(f"Error processing file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 vector_store = MilvusVectorStore(
@@ -296,11 +175,6 @@ def contextGrab(query, model):
                     verbose=False
                     )
     return chat_engine.chat(query)
-
-
-
-
-
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
