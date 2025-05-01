@@ -7,37 +7,26 @@ from pymilvus import MilvusClient
 
 dir_name = "./Documents/pdf_data/"
 
-
-# documents = SimpleDirectoryReader(
-#         dir_name, recursive=True
-# ).load_data()
+file = "placeholder"
 
 pdf_document = SimpleDirectoryReader(
-    input_files=[f"{dir_name}attention.pdf"]
+    input_files=[f"{dir_name}{file}.pdf"]
 ).load_data()
-
-
-print("Document ID:", documents[0].doc_id)
 
 vector_store = MilvusVectorStore(
     uri="http://149.165.151.119:19530", dim=768, overwrite=True
 )
 
 embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
-llm = Ollama(model="llama3.3",temperature=0.1, request_timeout=480.0)
+llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0)
 
 Settings.llm = llm
 Settings.embed_model = embedding_model
 
-# IMPORTANT: Experiment with chunk sizes and evaluate with performance metrics!!!
 Settings.chunk_size = 128
 Settings.chunk_overlap = 64
 
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 index = VectorStoreIndex.from_documents(
-    documents, storage_context=storage_context
+    pdf_document, storage_context=storage_context
 )
-
-query_engine = index.as_query_engine()
-res = query_engine.query("What is the TCRS?")
-print(res)

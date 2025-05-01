@@ -1,4 +1,4 @@
-from llama_index.core import VectorStoreIndex, Settings
+from llama_index.core import VectorStoreIndex, StorageContext, Settings, SimpleDirectoryReader
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.milvus import MilvusVectorStore
 from llama_index.llms.ollama import Ollama
@@ -135,7 +135,7 @@ async def process_file_background(
             input_files=[f"{str(full_document_path)}"]
         ).load_data()
         embedding_model = HuggingFaceEmbedding(model_name="BAAI/bge-base-en-v1.5")
-        llm = Ollama(model="llama3.3",temperature=0.1, request_timeout=480.0)
+        llm = Ollama(model="llama3.2",temperature=0.1, request_timeout=480.0)
         
         Settings.llm = llm
         Settings.embed_model = embedding_model
@@ -146,7 +146,7 @@ async def process_file_background(
         
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
-            documents, storage_context=storage_context
+            document, storage_context=storage_context
         )
         
         logger.info(f"Document {document_id} processed and indexed successfully")
